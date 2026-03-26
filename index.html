@@ -253,6 +253,27 @@
       font-weight: 700;
       color: var(--gold);
     }
+    .home-nav-logout {
+      background: none;
+      border: 1.5px solid rgba(255,255,255,0.35);
+      border-radius: 7px;
+      color: rgba(255,255,255,0.8);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.8rem;
+      font-weight: 600;
+      padding: 0.3rem 0.75rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+      margin-left: 0.5rem;
+    }
+    .home-nav-logout:hover {
+      background: rgba(255,255,255,0.1);
+      border-color: rgba(255,255,255,0.6);
+      color: #fff;
+    }
 
     /* Page body */
     .home-body {
@@ -1969,6 +1990,7 @@
       <div class="home-nav-user">
         <div class="home-nav-avatar" id="nav-avatar">N</div>
         <span id="nav-name">Nurse Malunes</span>
+        <button class="home-nav-logout" id="btn-logout">&#x2192; Log Out</button>
       </div>
     </nav>
 
@@ -1996,13 +2018,6 @@
           <div class="scenario-title">Photo First</div>
           <div class="scenario-desc">Take a photo first, then assign the reading to the correct patient.</div>
         </div>
-      </div>
-
-      <!-- Action buttons -->
-      <div class="home-actions">
-        <button class="btn-action maroon" id="btn-records">Patient Records</button>
-        <button class="btn-action maroon" id="btn-settings">Settings</button>
-        <button class="btn-action gold"   id="btn-logout">Log Out</button>
       </div>
 
     </div>
@@ -2625,15 +2640,6 @@
       navigationMode  = 'photoFirst';
       selectedPatient = null;
       openUploadScreen(null);
-    });
-    document.getElementById('btn-records').addEventListener('click', () => {
-      navigationMode = 'records';
-      renderPatientList();
-      showScreen('patientlist');
-    });
-    document.getElementById('btn-settings').addEventListener('click', () => {
-      renderMonitorList();
-      showScreen('settings');
     });
     document.getElementById('btn-logout').addEventListener('click', () => {
       openModal('modal-logout');
