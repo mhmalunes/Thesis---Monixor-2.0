@@ -1,0 +1,3512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Monixor 2.0</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet" />
+  <style>
+    /* ── Reset & base ───────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --maroon:   #7B1C1C;
+      --maroon-d: #5e1515;
+      --gold:     #C9922A;
+      --bg:       #F7F3EE;
+      --white:    #FFFFFF;
+      --border:   #E0D8D0;
+      --text:     #1A1A1A;
+      --muted:    #888;
+    }
+
+    html, body {
+      height: 100%;
+      font-family: 'DM Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    /* ── Screens ────────────────────────────────────────────────── */
+    .screen {
+      display: none;
+      width: 100%;
+      min-height: 100vh;
+    }
+    .screen.active { display: flex; }
+
+    /* ══════════════════════════════════════════════════════════════
+       SCREEN 1 — LOGIN
+    ══════════════════════════════════════════════════════════════ */
+    #screen-login {
+      flex-direction: row;
+    }
+
+    /* Left panel */
+    .login-left {
+      width: 50%;
+      background: var(--maroon);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2.5rem;
+      gap: 1rem;
+    }
+
+    .login-logo {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      background: rgba(201, 146, 42, 0.18);
+      border: 2px solid var(--gold);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 0.5rem;
+    }
+    .login-logo svg {
+      width: 36px;
+      height: 36px;
+      fill: var(--gold);
+    }
+
+    .login-appname {
+      font-size: 2.6rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      color: var(--gold);
+      text-align: center;
+    }
+
+    .login-tagline {
+      font-size: 1rem;
+      font-weight: 500;
+      color: rgba(255,255,255,0.85);
+      text-align: center;
+      line-height: 1.5;
+    }
+
+    .login-sub {
+      font-size: 0.82rem;
+      font-weight: 400;
+      color: rgba(255,255,255,0.5);
+      text-align: center;
+      letter-spacing: 0.03em;
+    }
+
+    .login-divider {
+      width: 40px;
+      height: 2px;
+      background: var(--gold);
+      opacity: 0.5;
+      border-radius: 2px;
+      margin: 0.25rem 0;
+    }
+
+    /* Right panel */
+    .login-right {
+      width: 50%;
+      background: var(--white);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 3.5rem;
+    }
+
+    .login-form-wrap {
+      width: 100%;
+      max-width: 360px;
+    }
+
+    .login-form-wrap h2 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--maroon);
+      margin-bottom: 0.35rem;
+    }
+
+    .login-form-wrap .login-welcome-sub {
+      font-size: 0.875rem;
+      color: var(--muted);
+      margin-bottom: 2rem;
+    }
+
+    .form-group {
+      margin-bottom: 1.25rem;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 0.45rem;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+    }
+
+    .form-group input {
+      width: 100%;
+      padding: 0.7rem 1rem;
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.95rem;
+      color: var(--text);
+      background: var(--bg);
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .form-group input::placeholder { color: #bbb; }
+    .form-group input:focus {
+      border-color: var(--maroon);
+      box-shadow: 0 0 0 3px rgba(123, 28, 28, 0.12);
+      background: var(--white);
+    }
+
+    /* Solid maroon button — always, never ghost */
+    .btn-primary {
+      display: block;
+      width: 100%;
+      padding: 0.78rem 1.5rem;
+      background: var(--maroon);
+      color: var(--white);
+      border: none;
+      border-radius: 8px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 1rem;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      cursor: pointer;
+      transition: background 0.18s;
+      margin-top: 0.5rem;
+    }
+    .btn-primary:hover  { background: var(--maroon-d); }
+    .btn-primary:active { background: #4a1010; }
+
+    /* Error message */
+    .form-error {
+      display: none;
+      background: #fdecea;
+      border: 1px solid #f5c6c2;
+      color: #b91c1c;
+      border-radius: 7px;
+      padding: 0.6rem 0.9rem;
+      font-size: 0.85rem;
+      margin-bottom: 1rem;
+    }
+    .form-error.show { display: block; }
+
+    .login-footer {
+      margin-top: 2rem;
+      font-size: 0.75rem;
+      color: #ccc;
+      text-align: center;
+    }
+
+    /* ══════════════════════════════════════════════════════════════
+       SCREEN 2 — HOME
+    ══════════════════════════════════════════════════════════════ */
+    #screen-home {
+      flex-direction: column;
+      background: var(--bg);
+      min-height: 100vh;
+    }
+
+    /* Top nav */
+    .home-nav {
+      width: 100%;
+      background: var(--maroon);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 2rem;
+      height: 60px;
+      flex-shrink: 0;
+    }
+    .home-nav-brand {
+      font-size: 1.25rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      color: var(--gold);
+    }
+    .home-nav-user {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      color: rgba(255,255,255,0.92);
+      font-size: 0.9rem;
+      font-weight: 500;
+    }
+    .home-nav-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: rgba(201,146,42,0.25);
+      border: 1.5px solid var(--gold);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: var(--gold);
+    }
+
+    /* Page body */
+    .home-body {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2.5rem 1.5rem 3rem;
+      gap: 2rem;
+      max-width: 860px;
+      width: 100%;
+      margin: 0 auto;
+    }
+
+    /* Greeting card */
+    .greeting-card {
+      width: 100%;
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 1.5rem 2rem;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    .greeting-icon {
+      font-size: 2.2rem;
+      line-height: 1;
+    }
+    .greeting-text h2 {
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: var(--maroon);
+      margin-bottom: 0.2rem;
+    }
+    .greeting-text p {
+      font-size: 0.875rem;
+      color: var(--muted);
+    }
+
+    /* Scenario cards row */
+    .scenario-row {
+      width: 100%;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.25rem;
+    }
+
+    .scenario-card {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 2rem 1.5rem;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.85rem;
+      cursor: pointer;
+      transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
+      text-align: center;
+      text-decoration: none;
+      color: inherit;
+    }
+    .scenario-card:hover {
+      border-color: var(--maroon);
+      box-shadow: 0 6px 20px rgba(123,28,28,0.13);
+      transform: translateY(-2px);
+    }
+    .scenario-card:active {
+      transform: translateY(0);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+    .scenario-emoji {
+      font-size: 2.8rem;
+      line-height: 1;
+    }
+    .scenario-title {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--maroon);
+    }
+    .scenario-desc {
+      font-size: 0.82rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    /* Bottom buttons row */
+    .home-actions {
+      width: 100%;
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 1rem;
+    }
+
+    .btn-action {
+      display: block;
+      width: 100%;
+      padding: 0.75rem 1rem;
+      border: none;
+      border-radius: 8px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.18s;
+      color: var(--white);
+      text-align: center;
+    }
+    .btn-action.maroon {
+      background: var(--maroon);
+    }
+    .btn-action.maroon:hover  { background: var(--maroon-d); }
+    .btn-action.maroon:active { background: #4a1010; }
+
+    .btn-action.gold {
+      background: var(--gold);
+    }
+    .btn-action.gold:hover  { background: #b07d22; }
+    .btn-action.gold:active { background: #8f651a; }
+
+    /* ══════════════════════════════════════════════════════════════
+       SCREEN 3 — PATIENT LIST
+    ══════════════════════════════════════════════════════════════ */
+    #screen-patientlist {
+      flex-direction: column;
+      background: var(--bg);
+    }
+
+    /* Shared sub-nav (back button + title) */
+    .sub-nav {
+      width: 100%;
+      background: var(--maroon);
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: 0 1.5rem;
+      height: 60px;
+      flex-shrink: 0;
+    }
+    .sub-nav-back {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      background: rgba(255,255,255,0.15);
+      border: none;
+      border-radius: 7px;
+      color: var(--white);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.88rem;
+      font-weight: 600;
+      padding: 0.4rem 0.85rem;
+      cursor: pointer;
+      transition: background 0.18s;
+    }
+    .sub-nav-back:hover { background: rgba(255,255,255,0.25); }
+    .sub-nav-title {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--white);
+      letter-spacing: 0.02em;
+    }
+
+    /* Search bar */
+    .pl-search-wrap {
+      width: 100%;
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 1.5rem 1.5rem 0;
+    }
+    .pl-search {
+      width: 100%;
+      padding: 0.72rem 1rem 0.72rem 2.8rem;
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.95rem;
+      color: var(--text);
+      background: var(--white) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23aaa' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E") no-repeat 0.85rem center;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+    }
+    .pl-search:focus {
+      border-color: var(--maroon);
+      box-shadow: 0 0 0 3px rgba(123,28,28,0.1);
+    }
+    .pl-search::placeholder { color: #bbb; }
+
+    /* Patient grid */
+    .pl-grid-wrap {
+      width: 100%;
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 1.25rem 1.5rem 3rem;
+    }
+    .pl-count {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-bottom: 1rem;
+    }
+    .pl-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+    .pl-no-results {
+      grid-column: 1 / -1;
+      text-align: center;
+      color: var(--muted);
+      padding: 3rem 0;
+      font-size: 0.95rem;
+    }
+
+    /* Patient card */
+    .patient-card {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.25rem 1.4rem;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+      cursor: pointer;
+      transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
+      display: flex;
+      flex-direction: column;
+      gap: 0.45rem;
+    }
+    .patient-card:hover {
+      border-color: var(--maroon);
+      box-shadow: 0 6px 18px rgba(123,28,28,0.12);
+      transform: translateY(-2px);
+    }
+    .patient-card:active {
+      transform: translateY(0);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+
+    .pc-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 0.5rem;
+    }
+    .pc-name {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--maroon);
+      line-height: 1.3;
+    }
+    .pc-bed {
+      font-size: 0.78rem;
+      color: var(--muted);
+      font-weight: 500;
+      margin-top: 0.15rem;
+    }
+    .pc-condition {
+      font-size: 0.82rem;
+      color: #444;
+    }
+
+    /* Status badge */
+    .status-badge {
+      display: inline-block;
+      padding: 0.22rem 0.75rem;
+      border-radius: 999px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .status-badge.stable   { background: #d1fae5; color: #065f46; }
+    .status-badge.critical { background: #fee2e2; color: #991b1b; }
+    .status-badge.warning  { background: #fef3c7; color: #92400e; }
+
+    /* ══════════════════════════════════════════════════════════════
+       SCREEN 4 — UPLOAD
+    ══════════════════════════════════════════════════════════════ */
+    #screen-upload {
+      flex-direction: column;
+      background: var(--bg);
+    }
+
+    /* sub-nav patient label on right */
+    .sub-nav-patient {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: rgba(255,255,255,0.85);
+      font-size: 0.85rem;
+      font-weight: 500;
+    }
+    .sub-nav-patient-badge {
+      background: rgba(201,146,42,0.22);
+      border: 1px solid rgba(201,146,42,0.5);
+      border-radius: 6px;
+      padding: 0.2rem 0.6rem;
+      color: var(--gold);
+      font-size: 0.78rem;
+      font-weight: 700;
+    }
+
+    /* Upload body */
+    .upload-body {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 1.75rem;
+      max-width: 860px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 2rem 1.5rem 3rem;
+    }
+
+    .upload-section-title {
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: var(--maroon);
+    }
+
+    /* Dropdown */
+    .upload-field-label {
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--text);
+      margin-bottom: 0.4rem;
+    }
+    .upload-select {
+      width: 100%;
+      padding: 0.72rem 1rem;
+      border: 1.5px solid var(--border);
+      border-radius: 9px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.95rem;
+      color: var(--text);
+      background: var(--white);
+      outline: none;
+      cursor: pointer;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 1rem center;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+    }
+    .upload-select:focus {
+      border-color: var(--maroon);
+      box-shadow: 0 0 0 3px rgba(123,28,28,0.1);
+    }
+
+    /* Upload boxes row */
+    .upload-boxes {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.25rem;
+    }
+
+    .upload-box {
+      background: var(--white);
+      border: 2px dashed var(--border);
+      border-radius: 12px;
+      min-height: 220px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.75rem;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      position: relative;
+      overflow: hidden;
+      padding: 1.5rem;
+      text-align: center;
+    }
+    .upload-box:hover {
+      border-color: var(--maroon);
+      background: #fdf8f4;
+    }
+    .upload-box.has-image {
+      border-style: solid;
+      border-color: var(--maroon);
+      padding: 0;
+    }
+    .upload-box-icon {
+      width: 44px;
+      height: 44px;
+      background: #f0e8e8;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .upload-box-icon svg {
+      width: 22px;
+      height: 22px;
+      stroke: var(--maroon);
+      fill: none;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .upload-box-label {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--maroon);
+    }
+    .upload-box-sub {
+      font-size: 0.78rem;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+    .upload-box-hint {
+      font-size: 0.72rem;
+      color: #bbb;
+    }
+    .upload-box input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+    .upload-preview {
+      width: 100%;
+      height: 100%;
+      min-height: 220px;
+      object-fit: cover;
+      display: block;
+      border-radius: 10px;
+    }
+    .upload-preview-overlay {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: linear-gradient(transparent, rgba(0,0,0,0.55));
+      color: #fff;
+      font-size: 0.78rem;
+      font-weight: 600;
+      padding: 0.6rem 0.8rem;
+      border-radius: 0 0 10px 10px;
+    }
+
+    /* Reference image panel (left side, populated from Settings) */
+    .ref-panel {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      min-height: 220px;
+      position: relative;
+    }
+    .ref-panel-header {
+      padding: 0.6rem 1rem;
+      border-bottom: 1px solid var(--border);
+      background: #fdf9f6;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      flex-shrink: 0;
+    }
+    .ref-panel-label {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--maroon);
+    }
+    .ref-panel-model {
+      font-size: 0.72rem;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 160px;
+    }
+    .ref-panel-img {
+      width: 100%;
+      flex: 1;
+      object-fit: cover;
+      display: block;
+      min-height: 180px;
+    }
+    /* Small "Change" button */
+    .btn-change-ref {
+      position: absolute;
+      bottom: 0.6rem;
+      right: 0.6rem;
+      padding: 0.3rem 0.7rem;
+      background: rgba(123,28,28,0.85);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.72rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-change-ref:hover { background: var(--maroon); }
+    /* Hidden override input */
+    .btn-change-ref input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Warning state — no reference image configured */
+    .ref-warning {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.75rem;
+      padding: 1.5rem;
+      text-align: center;
+    }
+    .ref-warning-icon { font-size: 1.8rem; }
+    .ref-warning-text {
+      font-size: 0.82rem;
+      color: #92400e;
+      font-weight: 500;
+      line-height: 1.5;
+    }
+    .btn-go-settings {
+      padding: 0.45rem 1rem;
+      background: var(--gold);
+      color: var(--white);
+      border: none;
+      border-radius: 7px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.82rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.18s;
+    }
+    .btn-go-settings:hover { background: #b07d22; }
+
+    /* Empty state — no model selected yet */
+    .ref-empty {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      padding: 1.5rem;
+      text-align: center;
+    }
+    .ref-empty svg {
+      width: 36px; height: 36px;
+      stroke: #d4c8bc; fill: none;
+      stroke-width: 1.5; stroke-linecap: round;
+    }
+    .ref-empty-text { font-size: 0.8rem; color: #ccc; }
+
+    /* Run Pipeline button */
+    .btn-run {
+      display: block;
+      width: 100%;
+      padding: 1rem;
+      background: var(--maroon);
+      color: var(--white);
+      border: none;
+      border-radius: 10px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 1.05rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+      transition: background 0.18s;
+    }
+    .btn-run:hover  { background: var(--maroon-d); }
+    .btn-run:active { background: #4a1010; }
+    .btn-run:disabled {
+      background: #c4a0a0;
+      cursor: not-allowed;
+    }
+
+    .upload-run-note {
+      text-align: center;
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin-top: -0.75rem;
+    }
+
+    /* ══════════════════════════════════════════════════════════════
+       SCREEN 5 — VERIFY
+    ══════════════════════════════════════════════════════════════ */
+    #screen-verify {
+      flex-direction: column;
+      background: var(--bg);
+    }
+
+    .verify-body {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+      max-width: 980px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 2rem 1.5rem 3rem;
+      align-items: start;
+    }
+
+    /* Left — image panel */
+    .verify-image-panel {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+      display: flex;
+      flex-direction: column;
+    }
+    .verify-image-panel-header {
+      padding: 0.85rem 1.2rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .verify-image-panel-header span {
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--maroon);
+    }
+    .verify-image-panel-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--maroon);
+      opacity: 0.4;
+    }
+    .verify-monitor-img {
+      width: 100%;
+      aspect-ratio: 4/3;
+      object-fit: cover;
+      display: block;
+      background: #f0e8e8;
+    }
+    .verify-img-placeholder {
+      width: 100%;
+      aspect-ratio: 4/3;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      background: #faf5f5;
+      color: #cbb;
+      font-size: 0.82rem;
+    }
+    .verify-img-placeholder svg {
+      width: 40px;
+      height: 40px;
+      stroke: #dcc;
+      fill: none;
+      stroke-width: 1.5;
+      stroke-linecap: round;
+    }
+
+    /* Right — form panel */
+    .verify-form-panel {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      overflow: hidden;
+    }
+    .verify-form-header {
+      padding: 1rem 1.4rem;
+      border-bottom: 1px solid var(--border);
+      background: #fdf9f6;
+    }
+    .verify-form-header h3 {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--maroon);
+      margin-bottom: 0.1rem;
+    }
+    .verify-form-header p {
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+
+    .verify-fields {
+      padding: 1.25rem 1.4rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.85rem;
+    }
+
+    .vf-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+    }
+
+    .vf-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+    }
+    .vf-label {
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+    }
+    .vf-label span {
+      font-weight: 400;
+      text-transform: none;
+      letter-spacing: 0;
+      color: #bbb;
+      font-size: 0.68rem;
+    }
+    .vf-input {
+      width: 100%;
+      padding: 0.55rem 0.8rem;
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--text);
+      background: var(--bg);
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .vf-input:focus {
+      border-color: var(--maroon);
+      box-shadow: 0 0 0 3px rgba(123,28,28,0.1);
+      background: var(--white);
+    }
+    /* Full-width field (NIBP spans both columns) */
+    .vf-group.full { grid-column: 1 / -1; }
+
+    /* Divider inside form */
+    .vf-divider {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 0.25rem 0;
+    }
+
+    .verify-form-footer {
+      padding: 1.1rem 1.4rem;
+      border-top: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      background: #fdf9f6;
+    }
+
+    /* Confirm & Save — green */
+    .btn-confirm {
+      display: block;
+      width: 100%;
+      padding: 0.82rem 1rem;
+      background: #16a34a;
+      color: var(--white);
+      border: none;
+      border-radius: 9px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.18s;
+      letter-spacing: 0.02em;
+    }
+    .btn-confirm:hover  { background: #15803d; }
+    .btn-confirm:active { background: #166534; }
+
+    .verify-note {
+      text-align: center;
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+
+    /* ══════════════════════════════════════════════════════════════
+       SCREEN 6 — SUMMARY
+    ══════════════════════════════════════════════════════════════ */
+    #screen-summary {
+      flex-direction: column;
+      background: var(--bg);
+    }
+
+    /* Success banner */
+    .summary-banner {
+      width: 100%;
+      background: #dcfce7;
+      border-bottom: 1px solid #bbf7d0;
+      padding: 0.85rem 2rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .summary-banner-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: #16a34a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      color: #fff;
+      font-size: 0.85rem;
+      font-weight: 700;
+    }
+    .summary-banner-text {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: #15803d;
+    }
+
+    /* Summary body */
+    .summary-body {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 1.75rem;
+      max-width: 860px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 2rem 1.5rem 3rem;
+    }
+
+    /* Meta row: patient info + timestamp */
+    .summary-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+    .summary-meta-left h2 {
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: var(--maroon);
+      margin-bottom: 0.15rem;
+    }
+    .summary-meta-left p {
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+    .summary-timestamp {
+      font-size: 0.78rem;
+      color: var(--muted);
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: 0.3rem 0.75rem;
+    }
+
+    /* Inline assign panel */
+    #assign-panel {
+      background: var(--white);
+      border: 1.5px solid var(--gold);
+      border-radius: 12px;
+      padding: 1rem 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+    #assign-confirmed {
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: #16a34a;
+      padding: 0.4rem 0;
+    }
+    #assign-search {
+      width: 100%;
+      padding: 0.65rem 0.9rem;
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.92rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    #assign-search:focus { border-color: var(--maroon); }
+    #assign-results {
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+      max-height: 220px;
+      overflow-y: auto;
+    }
+    .assign-item {
+      padding: 0.55rem 0.85rem;
+      border-radius: 7px;
+      cursor: pointer;
+      font-size: 0.88rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      transition: background 0.15s;
+      border: 1px solid transparent;
+    }
+    .assign-item:hover {
+      background: #fdf0f0;
+      border-color: var(--maroon);
+    }
+    .assign-item-name { font-weight: 600; color: var(--maroon); }
+    .assign-item-bed  { font-size: 0.78rem; color: var(--muted); }
+
+    /* History section title row */
+    .summary-section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+    }
+    .summary-section-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--maroon);
+    }
+
+    /* History table wrapper */
+    .history-table-wrap {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+      overflow: hidden;
+      overflow-x: auto;
+    }
+    .history-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+      min-width: 620px;
+    }
+    .history-table thead th {
+      background: var(--maroon);
+      color: var(--white);
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.7rem 1rem;
+      text-align: left;
+      white-space: nowrap;
+    }
+    .history-table tbody tr {
+      border-bottom: 1px solid var(--border);
+      transition: background 0.15s;
+    }
+    .history-table tbody tr:last-child { border-bottom: none; }
+    .history-table tbody tr.row-latest {
+      background: #f5e6e6;
+    }
+    .history-table tbody tr.row-alt {
+      background: #faf8f6;
+    }
+    .history-table tbody tr:not(.row-latest):hover {
+      background: #f3ede8;
+    }
+    .history-table tbody td {
+      padding: 0.7rem 1rem;
+      color: var(--text);
+      white-space: nowrap;
+    }
+    .history-table tbody td.td-value {
+      font-weight: 700;
+      color: var(--maroon);
+    }
+    .history-table tbody td.td-time {
+      color: var(--muted);
+      font-size: 0.8rem;
+    }
+    .history-table .no-data td {
+      text-align: center;
+      color: var(--muted);
+      padding: 2rem;
+      font-size: 0.9rem;
+    }
+    .history-table tbody td.td-patient {
+      font-weight: 600;
+      color: var(--text);
+      font-size: 0.82rem;
+    }
+
+    /* Delete button */
+    .btn-delete {
+      background: #dc2626;
+      color: var(--white);
+      border: none;
+      border-radius: 6px;
+      padding: 0.3rem 0.65rem;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+      white-space: nowrap;
+    }
+    .btn-delete:hover  { background: #b91c1c; }
+    .btn-delete:active { background: #991b1b; }
+
+    .btn-edit {
+      background: #7B1C1C;
+      color: var(--white);
+      border: none;
+      border-radius: 6px;
+      padding: 0.3rem 0.65rem;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+      white-space: nowrap;
+      margin-right: 0.35rem;
+    }
+    .btn-edit:hover  { background: #5e1515; }
+    .btn-edit:active { background: #4a1010; }
+
+    /* Edit modal vitals grid */
+    .edit-vitals-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem 1rem;
+      margin-top: 0.5rem;
+    }
+    .edit-vitals-grid label {
+      display: flex;
+      flex-direction: column;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: #555;
+      gap: 0.25rem;
+    }
+    .edit-vitals-grid input {
+      border: 1.5px solid #d4c8bc;
+      border-radius: 6px;
+      padding: 0.35rem 0.6rem;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.88rem;
+      color: #1A1A1A;
+    }
+    .edit-vitals-grid input:focus {
+      border-color: #7B1C1C;
+      outline: none;
+      box-shadow: 0 0 0 2px rgba(123,28,28,0.15);
+    }
+
+    /* Export CSV button */
+    .btn-export {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.45rem 1rem;
+      background: var(--maroon);
+      color: var(--white);
+      border: none;
+      border-radius: 7px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.18s;
+    }
+    .btn-export:hover  { background: var(--maroon-d); }
+    .btn-export:active { background: #4a1010; }
+
+    /* Bottom action buttons */
+    .summary-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+    .btn-summary {
+      display: block;
+      width: 100%;
+      padding: 0.82rem 1rem;
+      border: none;
+      border-radius: 9px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.95rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.18s;
+      color: var(--white);
+      text-align: center;
+    }
+    .btn-summary.maroon          { background: var(--maroon); }
+    .btn-summary.maroon:hover    { background: var(--maroon-d); }
+    .btn-summary.maroon:active   { background: #4a1010; }
+    .btn-summary.gold            { background: var(--gold); }
+    .btn-summary.gold:hover      { background: #b07d22; }
+    .btn-summary.gold:active     { background: #8f651a; }
+
+    /* ══════════════════════════════════════════════════════════════
+       MODALS
+    ══════════════════════════════════════════════════════════════ */
+    .modal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.45);
+      z-index: 9000;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    .modal-backdrop.open { display: flex; }
+
+    .modal {
+      background: var(--white);
+      border-radius: 14px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.22);
+      width: 100%;
+      max-width: 420px;
+      overflow: hidden;
+      animation: modal-in 0.18s ease;
+    }
+    @keyframes modal-in {
+      from { opacity: 0; transform: scale(0.95) translateY(8px); }
+      to   { opacity: 1; transform: scale(1)    translateY(0);   }
+    }
+
+    .modal-header {
+      background: var(--maroon);
+      padding: 1rem 1.4rem;
+    }
+    .modal-header h3 {
+      color: var(--white);
+      font-size: 1rem;
+      font-weight: 700;
+      margin: 0;
+    }
+    .modal-body {
+      padding: 1.25rem 1.4rem 0.5rem;
+      font-size: 0.9rem;
+      color: #333;
+      line-height: 1.6;
+    }
+    .modal-footer {
+      padding: 1rem 1.4rem 1.25rem;
+      display: flex;
+      gap: 0.75rem;
+      justify-content: flex-end;
+    }
+
+    /* Modal buttons */
+    .mbtn {
+      padding: 0.55rem 1.2rem;
+      border: none;
+      border-radius: 7px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+      color: var(--white);
+    }
+    .mbtn-gray   { background: #9ca3af; }
+    .mbtn-gray:hover   { background: #6b7280; }
+    .mbtn-red    { background: #dc2626; }
+    .mbtn-red:hover    { background: #b91c1c; }
+    .mbtn-maroon { background: var(--maroon); }
+    .mbtn-maroon:hover { background: var(--maroon-d); }
+    .mbtn-gold   { background: var(--gold); }
+    .mbtn-gold:hover   { background: #b07d22; }
+
+    /* ── Responsive ─────────────────────────────────────────────── */
+    @media (max-width: 680px) {
+      #screen-login { flex-direction: column; }
+      .login-left, .login-right { width: 100%; }
+      .login-left  { padding: 2.5rem 1.5rem; min-height: 40vh; }
+      .login-right { padding: 2rem 1.5rem; }
+
+      .scenario-row   { grid-template-columns: 1fr; }
+      .home-actions   { grid-template-columns: 1fr; }
+      .home-nav       { padding: 0 1rem; }
+
+      .pl-grid        { grid-template-columns: 1fr; }
+      .upload-boxes   { grid-template-columns: 1fr; }
+
+      .verify-body    { grid-template-columns: 1fr; }
+      .vf-row         { grid-template-columns: 1fr; }
+
+      .summary-actions { grid-template-columns: 1fr; }
+    }
+
+    /* ══════════════════════════════════════════════════════════════
+       SCREEN 8 — SETTINGS
+    ══════════════════════════════════════════════════════════════ */
+    #screen-settings {
+      flex-direction: column;
+      background: var(--bg);
+    }
+
+    .settings-body {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+      max-width: 720px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 2rem 1.5rem 3rem;
+    }
+
+    .settings-section-title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--maroon);
+    }
+
+    /* Monitor model cards list */
+    .monitor-list {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .monitor-card {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+      padding: 1.1rem 1.25rem;
+      display: flex;
+      align-items: center;
+      gap: 1.1rem;
+      position: relative;
+    }
+
+    /* Thumbnail */
+    .monitor-thumb {
+      width: 68px;
+      height: 52px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+      flex-shrink: 0;
+      background: #f0ebe4;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      cursor: pointer;
+    }
+    .monitor-thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .monitor-thumb-placeholder {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      height: 100%;
+      gap: 2px;
+    }
+    .monitor-thumb-placeholder svg {
+      width: 20px;
+      height: 20px;
+      stroke: #c4b5a8;
+      fill: none;
+      stroke-width: 1.5;
+      stroke-linecap: round;
+    }
+    .monitor-thumb-placeholder span {
+      font-size: 0.55rem;
+      color: #c4b5a8;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    /* Hidden file input overlaid on thumbnail */
+    .monitor-thumb input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+
+    .monitor-info {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+    .monitor-name {
+      font-size: 0.97rem;
+      font-weight: 700;
+      color: var(--maroon);
+    }
+    .monitor-img-status {
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+    .monitor-img-status.has-img {
+      color: #16a34a;
+      font-weight: 600;
+    }
+
+    .monitor-card-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      flex-shrink: 0;
+    }
+
+    /* Upload base image — maroon */
+    .btn-upload-base {
+      padding: 0.42rem 0.9rem;
+      background: var(--maroon);
+      color: var(--white);
+      border: none;
+      border-radius: 7px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.18s;
+      white-space: nowrap;
+      position: relative;
+      overflow: hidden;
+    }
+    .btn-upload-base:hover  { background: var(--maroon-d); }
+    /* Hidden file input inside the button */
+    .btn-upload-base input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Delete — small red */
+    .btn-delete-model {
+      padding: 0.42rem 0.75rem;
+      background: #dc2626;
+      color: var(--white);
+      border: none;
+      border-radius: 7px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+      white-space: nowrap;
+    }
+    .btn-delete-model:hover  { background: #b91c1c; }
+    .btn-delete-model:active { background: #991b1b; }
+
+    /* Add monitor row */
+    .add-monitor-row {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .add-monitor-input {
+      flex: 1;
+      padding: 0.65rem 0.9rem;
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.95rem;
+      color: var(--text);
+      background: var(--white);
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .add-monitor-input:focus {
+      border-color: var(--maroon);
+      box-shadow: 0 0 0 3px rgba(123,28,28,0.1);
+    }
+    .add-monitor-input::placeholder { color: #bbb; }
+
+    .btn-save-model {
+      padding: 0.65rem 1.1rem;
+      background: var(--maroon);
+      color: var(--white);
+      border: none;
+      border-radius: 8px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.9rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.18s;
+      white-space: nowrap;
+    }
+    .btn-save-model:hover  { background: var(--maroon-d); }
+
+    /* Gold "Add Monitor Model" button */
+    .btn-add-monitor {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.72rem 1.4rem;
+      background: var(--gold);
+      color: var(--white);
+      border: none;
+      border-radius: 9px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.95rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.18s;
+      align-self: flex-start;
+    }
+    .btn-add-monitor:hover  { background: #b07d22; }
+    .btn-add-monitor:active { background: #8f651a; }
+
+    /* ══════════════════════════════════════════════════════════════
+       BOTTOM NAV (all post-login screens)
+    ══════════════════════════════════════════════════════════════ */
+    #bottom-nav {
+      display: none; /* shown by JS when authenticated */
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      background: var(--maroon);
+      height: 60px;
+      z-index: 500;
+      align-items: stretch;
+    }
+    #bottom-nav.visible { display: flex; }
+    .bnav-item {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      color: rgba(255,255,255,0.65);
+      font-size: 0.68rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+      border: none;
+      background: none;
+      font-family: 'DM Sans', sans-serif;
+      letter-spacing: 0.01em;
+    }
+    .bnav-item:hover  { background: rgba(255,255,255,0.08); color: #fff; }
+    .bnav-item.active { color: var(--gold); }
+    .bnav-item .bnav-icon { font-size: 1.2rem; line-height: 1; }
+
+    /* Extra bottom padding for screens that sit above bottom-nav */
+    .has-bottom-nav { padding-bottom: 60px; }
+
+    /* ══════════════════════════════════════════════════════════════
+       SCREEN: PIPELINE LOADING
+    ══════════════════════════════════════════════════════════════ */
+    #screen-loading {
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg);
+      gap: 2.5rem;
+      padding: 3rem;
+    }
+    .loading-card {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 2.5rem 3rem;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+      width: 100%;
+      max-width: 520px;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+    .loading-header {
+      text-align: center;
+    }
+    .loading-header h2 { color: var(--maroon); font-size: 1.3rem; margin-bottom: 0.25rem; }
+    .loading-header p  { color: var(--muted); font-size: 0.85rem; }
+    .loading-spinner {
+      width: 48px; height: 48px;
+      border: 4px solid rgba(123,28,28,0.15);
+      border-top-color: var(--maroon);
+      border-radius: 50%;
+      animation: spin 0.9s linear infinite;
+      margin: 0 auto;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-steps { display: flex; flex-direction: column; gap: 0.75rem; }
+    .loading-step {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-size: 0.88rem;
+      color: #bbb;
+      transition: color 0.3s;
+    }
+    .loading-step.active { color: var(--maroon); font-weight: 600; }
+    .loading-step.done   { color: #22a55a; font-weight: 600; }
+    .step-icon {
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      border: 2px solid #ddd;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.7rem;
+      flex-shrink: 0;
+      transition: all 0.3s;
+    }
+    .loading-step.active .step-icon {
+      border-color: var(--maroon);
+      background: rgba(123,28,28,0.1);
+    }
+    .loading-step.done .step-icon {
+      border-color: #22a55a;
+      background: #22a55a;
+      color: #fff;
+    }
+    .loading-progress-bar {
+      width: 100%;
+      height: 6px;
+      background: #eee;
+      border-radius: 99px;
+      overflow: hidden;
+    }
+    .loading-progress-fill {
+      height: 100%;
+      background: var(--maroon);
+      border-radius: 99px;
+      width: 0%;
+      transition: width 0.5s ease;
+    }
+
+    /* ══════════════════════════════════════════════════════════════
+       SCREEN 7 — HISTORY
+    ══════════════════════════════════════════════════════════════ */
+    #screen-history {
+      flex-direction: column;
+    }
+    .history-screen-body {
+      padding: 1.5rem 2rem 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+      max-width: 1100px;
+      width: 100%;
+      margin: 0 auto;
+    }
+    .history-filter-row {
+      display: flex;
+      gap: 0.75rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .history-filter-row input {
+      flex: 1;
+      min-width: 200px;
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      padding: 0.5rem 0.85rem;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.9rem;
+      background: var(--white);
+    }
+    .history-filter-row input:focus {
+      outline: none;
+      border-color: var(--maroon);
+      box-shadow: 0 0 0 2px rgba(123,28,28,0.12);
+    }
+    .history-stat {
+      font-size: 0.82rem;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    /* Add Patient button in patient list */
+    .pl-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0 1.5rem;
+      margin-bottom: -0.25rem;
+    }
+    .pl-count-inline { font-size: 0.82rem; color: var(--muted); flex: 1; }
+    .btn-add-patient {
+      background: var(--maroon);
+      color: var(--white);
+      border: none;
+      border-radius: 8px;
+      padding: 0.45rem 1rem;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+      white-space: nowrap;
+    }
+    .btn-add-patient:hover  { background: var(--maroon-d); }
+
+    /* Add patient modal form */
+    .add-patient-form { display: flex; flex-direction: column; gap: 0.9rem; }
+    .ap-field { display: flex; flex-direction: column; gap: 0.3rem; }
+    .ap-label { font-size: 0.82rem; font-weight: 600; color: #555; }
+    .ap-input, .ap-select {
+      border: 1.5px solid var(--border);
+      border-radius: 7px;
+      padding: 0.45rem 0.7rem;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.9rem;
+      color: var(--text);
+      background: var(--white);
+    }
+    .ap-input:focus, .ap-select:focus {
+      outline: none;
+      border-color: var(--maroon);
+      box-shadow: 0 0 0 2px rgba(123,28,28,0.12);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ══ SCREEN 1: LOGIN ══════════════════════════════════════════ -->
+  <div id="screen-login" class="screen active">
+
+    <!-- Left: branding -->
+    <div class="login-left">
+      <div class="login-logo">
+        <!-- Heartbeat / vitals icon -->
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 21.593c-5.63-5.539-11-10.297-11-14.402
+                   C1 3.403 4.073 2 6.5 2
+                   C9.003 2 11.057 3.58 12 5.085
+                   C12.943 3.58 14.997 2 17.5 2
+                   C19.927 2 23 3.403 23 7.191
+                   C23 11.296 17.63 16.054 12 21.593z"/>
+        </svg>
+      </div>
+
+      <div class="login-appname">MONIXOR 2.0</div>
+      <div class="login-divider"></div>
+      <div class="login-tagline">Vital Signs Transcription System</div>
+      <div class="login-sub">PGH Medical Intensive Care Unit</div>
+    </div>
+
+    <!-- Right: form -->
+    <div class="login-right">
+      <div class="login-form-wrap">
+        <h2>Welcome back</h2>
+        <p class="login-welcome-sub">Sign in with your hospital credentials.</p>
+
+        <div class="form-error" id="login-error">
+          Incorrect username or password. Please try again.
+        </div>
+
+        <div class="form-group">
+          <label for="username">Username</label>
+          <input
+            type="text"
+            id="username"
+            placeholder="e.g. nurse.juan"
+            autocomplete="username"
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="password">Password</label>
+          <input
+            type="password"
+            id="password"
+            placeholder="Enter your password"
+            autocomplete="current-password"
+          />
+        </div>
+
+        <button class="btn-primary" id="btn-signin">Sign In</button>
+
+        <p class="login-footer">
+          Authorized personnel only &nbsp;·&nbsp; Monixor 2.0 © 2026
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ SCREEN 2: HOME ═══════════════════════════════════════════ -->
+  <div id="screen-home" class="screen has-bottom-nav">
+
+    <!-- Top nav -->
+    <nav class="home-nav">
+      <div class="home-nav-brand">MONIXOR 2.0</div>
+      <div class="home-nav-user">
+        <div class="home-nav-avatar" id="nav-avatar">N</div>
+        <span id="nav-name">Nurse Malunes</span>
+      </div>
+    </nav>
+
+    <!-- Page body -->
+    <div class="home-body">
+
+      <!-- Greeting -->
+      <div class="greeting-card">
+        <div class="greeting-icon">👋</div>
+        <div class="greeting-text">
+          <h2 id="greeting-text">Good morning, Nurse Malunes!</h2>
+          <p>Select a workflow to begin transcription.</p>
+        </div>
+      </div>
+
+      <!-- Scenario cards -->
+      <div class="scenario-row">
+        <div class="scenario-card" id="card-patient-first">
+          <div class="scenario-emoji">🧑‍⚕️</div>
+          <div class="scenario-title">Patient First</div>
+          <div class="scenario-desc">Find the patient first, then capture a photo of their vital signs monitor.</div>
+        </div>
+        <div class="scenario-card" id="card-photo-first">
+          <div class="scenario-emoji">📷</div>
+          <div class="scenario-title">Photo First</div>
+          <div class="scenario-desc">Take a photo first, then assign the reading to the correct patient.</div>
+        </div>
+      </div>
+
+      <!-- Action buttons -->
+      <div class="home-actions">
+        <button class="btn-action maroon" id="btn-records">Patient Records</button>
+        <button class="btn-action maroon" id="btn-settings">Settings</button>
+        <button class="btn-action gold"   id="btn-logout">Log Out</button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ══ SCREEN 3: PATIENT LIST ══════════════════════════════════ -->
+  <div id="screen-patientlist" class="screen has-bottom-nav">
+
+    <nav class="sub-nav">
+      <button class="sub-nav-back" id="pl-back">&#8592; Back</button>
+      <span class="sub-nav-title">Select Patient</span>
+    </nav>
+
+    <div class="pl-search-wrap">
+      <input
+        class="pl-search"
+        id="pl-search"
+        type="text"
+        placeholder="Search patient by name or bed number..."
+        autocomplete="off"
+      />
+    </div>
+
+    <div class="pl-toolbar">
+      <span class="pl-count-inline" id="pl-count">Showing 6 patients</span>
+      <button class="btn-add-patient" id="btn-add-patient">+ Add Patient</button>
+    </div>
+
+    <div class="pl-grid-wrap">
+      <div class="pl-grid" id="pl-grid">
+        <!-- injected by JS -->
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ══ SCREEN 4: UPLOAD ════════════════════════════════════════ -->
+  <div id="screen-upload" class="screen has-bottom-nav">
+
+    <nav class="sub-nav">
+      <button class="sub-nav-back" id="upload-back">&#8592; Back</button>
+      <span class="sub-nav-title">Capture Vital Signs</span>
+      <div class="sub-nav-patient">
+        <span id="upload-patient-name">—</span>
+        <span class="sub-nav-patient-badge" id="upload-patient-bed">—</span>
+      </div>
+    </nav>
+
+    <div class="upload-body">
+
+      <!-- Section title -->
+      <div class="upload-section-title">Capture Vital Signs</div>
+
+      <!-- Monitor model dropdown (populated from monitorModels) -->
+      <div>
+        <div class="upload-field-label">Monitor Model</div>
+        <select class="upload-select" id="upload-monitor">
+          <option value="">Select monitor model...</option>
+        </select>
+      </div>
+
+      <!-- Upload boxes: LEFT = reference (from Settings), RIGHT = photo -->
+      <div class="upload-boxes">
+
+        <!-- LEFT: reference image from Settings -->
+        <div class="ref-panel" id="ref-panel">
+          <!-- content injected by JS when model is selected -->
+          <div class="ref-empty" id="ref-empty">
+            <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            <div class="ref-empty-text">Select a monitor model to load the reference image</div>
+          </div>
+        </div>
+
+        <!-- RIGHT: monitor photo upload -->
+        <div class="upload-box" id="box-monitor">
+          <div class="upload-box-icon">
+            <svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+          </div>
+          <div class="upload-box-label">Monitor Photo</div>
+          <div class="upload-box-sub">Upload current monitor photo</div>
+          <div class="upload-box-hint">PNG, JPG up to 10 MB</div>
+          <input type="file" id="input-monitor" accept="image/*" />
+        </div>
+
+      </div>
+
+      <!-- Run Pipeline -->
+      <button class="btn-run" id="btn-run-pipeline">Run Pipeline</button>
+      <p class="upload-run-note">Processing may take a few seconds</p>
+
+    </div>
+  </div>
+
+  <!-- ══ SCREEN 5: VERIFY ════════════════════════════════════════ -->
+  <div id="screen-verify" class="screen has-bottom-nav">
+
+    <nav class="sub-nav">
+      <button class="sub-nav-back" id="verify-back">&#8592; Back</button>
+      <span class="sub-nav-title">Verify Extracted Values</span>
+      <div class="sub-nav-patient">
+        <span id="verify-patient-name">—</span>
+        <span class="sub-nav-patient-badge" id="verify-patient-bed">—</span>
+      </div>
+    </nav>
+
+    <div class="verify-body">
+
+      <!-- LEFT: monitor photo preview -->
+      <div class="verify-image-panel">
+        <div class="verify-image-panel-header">
+          <div class="verify-image-panel-dot"></div>
+          <span>Monitor Photo</span>
+        </div>
+        <!-- img shown when photo was uploaded; placeholder otherwise -->
+        <img class="verify-monitor-img" id="verify-img" src="" alt="Monitor photo" style="display:none;" />
+        <div class="verify-img-placeholder" id="verify-img-placeholder">
+          <svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+          No photo uploaded
+        </div>
+      </div>
+
+      <!-- RIGHT: editable vital signs form -->
+      <div class="verify-form-panel">
+        <div class="verify-form-header">
+          <h3>Extracted Vital Signs</h3>
+          <p>Review and correct values before saving.</p>
+        </div>
+
+        <div class="verify-fields">
+          <div class="vf-row">
+            <div class="vf-group">
+              <div class="vf-label">HR <span>(bpm)</span></div>
+              <input class="vf-input" id="vf-hr"   type="text" value="72" />
+            </div>
+            <div class="vf-group">
+              <div class="vf-label">SpO₂ <span>(%)</span></div>
+              <input class="vf-input" id="vf-spo2" type="text" value="98" />
+            </div>
+          </div>
+
+          <div class="vf-row">
+            <div class="vf-group full">
+              <div class="vf-label">NIBP <span>(mmHg)</span></div>
+              <input class="vf-input" id="vf-nibp" type="text" value="120/80" />
+            </div>
+          </div>
+
+          <div class="vf-row">
+            <div class="vf-group">
+              <div class="vf-label">MAP <span>(mmHg)</span></div>
+              <input class="vf-input" id="vf-map"  type="text" value="93" />
+            </div>
+            <div class="vf-group">
+              <div class="vf-label">RR <span>(brpm)</span></div>
+              <input class="vf-input" id="vf-rr"   type="text" value="16" />
+            </div>
+          </div>
+
+          <div class="vf-row">
+            <div class="vf-group">
+              <div class="vf-label">Temp <span>(°C)</span></div>
+              <input class="vf-input" id="vf-temp" type="text" value="36.8" />
+            </div>
+          </div>
+        </div>
+
+        <div class="verify-form-footer">
+          <button class="btn-confirm" id="btn-confirm-save">✓ Confirm &amp; Save</button>
+          <p class="verify-note">Review extracted values before saving</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ══ SCREEN 6: SUMMARY ═══════════════════════════════════════ -->
+  <div id="screen-summary" class="screen has-bottom-nav">
+
+    <nav class="sub-nav">
+      <span class="sub-nav-title" style="margin:0 auto;">Vitals Summary</span>
+    </nav>
+
+    <!-- Success banner -->
+    <div class="summary-banner" id="summary-banner">
+      <div class="summary-banner-icon">✓</div>
+      <div class="summary-banner-text" id="summary-banner-text">
+        Vital signs successfully saved.
+      </div>
+    </div>
+
+    <div class="summary-body">
+
+      <!-- Patient meta + timestamp -->
+      <div class="summary-meta">
+        <div class="summary-meta-left">
+          <h2 id="summary-patient-name">—</h2>
+          <p id="summary-patient-meta">—</p>
+        </div>
+        <div class="summary-timestamp" id="summary-timestamp">—</div>
+      </div>
+
+      <!-- Inline assign panel (Photo First only) -->
+      <div id="assign-panel" style="display:none;">
+        <div id="assign-confirmed" style="display:none;"></div>
+        <div id="assign-controls">
+          <input id="assign-search" type="text" placeholder="Search patient by name or bed…" autocomplete="off" />
+          <div id="assign-results"></div>
+        </div>
+      </div>
+
+      <!-- History table -->
+      <div class="summary-section-header">
+        <div class="summary-section-title">Vitals History</div>
+        <button class="btn-export" id="btn-export-csv">&#8659; Export CSV</button>
+      </div>
+
+      <div class="history-table-wrap">
+        <table class="history-table">
+          <thead>
+            <tr>
+              <th>Date &amp; Time</th>
+              <th>Patient</th>
+              <th>HR (bpm)</th>
+              <th>SpO₂ (%)</th>
+              <th>NIBP (mmHg)</th>
+              <th>MAP (mmHg)</th>
+              <th>RR (brpm)</th>
+              <th>Temp (°C)</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="history-tbody"></tbody>
+        </table>
+      </div>
+
+      <!-- Action buttons -->
+      <div class="summary-actions">
+        <button class="btn-summary maroon" id="btn-back-home">Back to Home</button>
+        <button class="btn-summary gold"   id="btn-back-patientlist">Back to Patient List</button>
+        <button class="btn-summary gold"   id="btn-record-another"   style="display:none;">Record Another Patient</button>
+        <button class="btn-summary gold"   id="btn-assign-patient"   style="display:none; grid-column:1/-1;">Assign to Patient</button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ══ SCREEN 8: SETTINGS ══════════════════════════════════════ -->
+  <div id="screen-settings" class="screen has-bottom-nav">
+
+    <nav class="sub-nav">
+      <button class="sub-nav-back" id="settings-back">&#8592; Back</button>
+      <span class="sub-nav-title">Settings</span>
+    </nav>
+
+    <div class="settings-body">
+
+      <div class="settings-section-title">Monitor Models</div>
+
+      <!-- Cards list (injected by JS) -->
+      <div class="monitor-list" id="monitor-list"></div>
+
+      <!-- Add new model area -->
+      <div class="add-monitor-row" id="add-monitor-row" style="display:none;">
+        <input
+          class="add-monitor-input"
+          id="add-monitor-input"
+          type="text"
+          placeholder="e.g. Nihon Kohden BSM-3000"
+          maxlength="80"
+        />
+        <button class="btn-save-model" id="btn-save-model">Save</button>
+      </div>
+
+      <button class="btn-add-monitor" id="btn-add-monitor">+ Add Monitor Model</button>
+
+    </div>
+  </div>
+
+  <!-- ══ SCREEN: PIPELINE LOADING ══════════════════════════════════ -->
+  <div id="screen-loading" class="screen">
+    <div class="loading-card">
+      <div class="loading-header">
+        <h2>Running Pipeline</h2>
+        <p>Analyzing monitor photo — please wait…</p>
+      </div>
+      <div class="loading-spinner"></div>
+      <div class="loading-progress-bar">
+        <div class="loading-progress-fill" id="loading-progress-fill"></div>
+      </div>
+      <div class="loading-steps" id="loading-steps">
+        <div class="loading-step" id="lstep-0">
+          <div class="step-icon">1</div>
+          <span>Preprocessing image (CLAHE enhancement)</span>
+        </div>
+        <div class="loading-step" id="lstep-1">
+          <div class="step-icon">2</div>
+          <span>Detecting keypoints (SIFT)</span>
+        </div>
+        <div class="loading-step" id="lstep-2">
+          <div class="step-icon">3</div>
+          <span>Matching features (FLANN)</span>
+        </div>
+        <div class="loading-step" id="lstep-3">
+          <div class="step-icon">4</div>
+          <span>Extracting vital sign values</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ SCREEN 7: HISTORY ═══════════════════════════════════════ -->
+  <div id="screen-history" class="screen has-bottom-nav">
+
+    <nav class="sub-nav">
+      <span class="sub-nav-title" style="margin:0 auto;">Vitals History</span>
+    </nav>
+
+    <div class="history-screen-body">
+      <div class="history-filter-row">
+        <input type="text" id="history-search" placeholder="Filter by patient name or bed…" autocomplete="off" />
+        <button class="btn-export" id="btn-history-export">&#8659; Export CSV</button>
+      </div>
+      <div class="history-stat" id="history-stat">No records yet.</div>
+      <div class="history-table-wrap">
+        <table class="history-table">
+          <thead>
+            <tr>
+              <th>Date &amp; Time</th>
+              <th>Patient</th>
+              <th>HR (bpm)</th>
+              <th>SpO₂ (%)</th>
+              <th>NIBP (mmHg)</th>
+              <th>MAP (mmHg)</th>
+              <th>RR (brpm)</th>
+              <th>Temp (°C)</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="history-screen-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ══ MODALS ═══════════════════════════════════════════════════ -->
+
+  <!-- 1. Delete Vital Entry -->
+  <div class="modal-backdrop" id="modal-delete-vital">
+    <div class="modal">
+      <div class="modal-header"><h3>Delete Entry</h3></div>
+      <div class="modal-body">Are you sure you want to delete this vital signs entry? This cannot be undone.</div>
+      <div class="modal-footer">
+        <button class="mbtn mbtn-gray"   id="mdv-cancel">Cancel</button>
+        <button class="mbtn mbtn-red"    id="mdv-confirm">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 1b. Edit Vital Entry -->
+  <div class="modal-backdrop" id="modal-edit-vital">
+    <div class="modal" style="max-width:480px;">
+      <div class="modal-header"><h3>✏ Edit Vital Signs</h3></div>
+      <div class="modal-body">
+        <div class="edit-vitals-grid">
+          <label>HR (bpm)<input id="mev-hr"   type="text" placeholder="e.g. 78"></label>
+          <label>SpO₂ (%)<input id="mev-spo2" type="text" placeholder="e.g. 98"></label>
+          <label>NIBP (mmHg)<input id="mev-nibp" type="text" placeholder="e.g. 120/80"></label>
+          <label>MAP (mmHg)<input id="mev-map"  type="text" placeholder="e.g. 93"></label>
+          <label>RR (brpm)<input id="mev-rr"   type="text" placeholder="e.g. 16"></label>
+          <label>Temp (°C)<input id="mev-temp" type="text" placeholder="e.g. 36.8"></label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="mbtn mbtn-gray"   id="mev-cancel">Cancel</button>
+        <button class="mbtn mbtn-maroon" id="mev-confirm">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. Save Success -->
+  <div class="modal-backdrop" id="modal-save-success">
+    <div class="modal">
+      <div class="modal-header"><h3>✓ Saved Successfully</h3></div>
+      <div class="modal-body" id="mss-body">Vital signs have been recorded.</div>
+      <div class="modal-footer">
+        <button class="mbtn mbtn-maroon" id="mss-confirm">View Summary</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. Logout Confirmation -->
+  <div class="modal-backdrop" id="modal-logout">
+    <div class="modal">
+      <div class="modal-header"><h3>Log Out</h3></div>
+      <div class="modal-body">Are you sure you want to log out of Monixor 2.0?</div>
+      <div class="modal-footer">
+        <button class="mbtn mbtn-gray"   id="mlo-cancel">Cancel</button>
+        <button class="mbtn mbtn-maroon" id="mlo-confirm">Log Out</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. No Reference Image -->
+  <div class="modal-backdrop" id="modal-no-ref">
+    <div class="modal">
+      <div class="modal-header"><h3>⚠ No Reference Image</h3></div>
+      <div class="modal-body">No base image is set for this monitor model. Please go to Settings to upload one first.</div>
+      <div class="modal-footer">
+        <button class="mbtn mbtn-gray"   id="mnr-cancel">Cancel</button>
+        <button class="mbtn mbtn-gold"   id="mnr-settings">Go to Settings</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. Delete Monitor Model -->
+  <div class="modal-backdrop" id="modal-delete-model">
+    <div class="modal">
+      <div class="modal-header"><h3>Delete Monitor Model</h3></div>
+      <div class="modal-body" id="mdm-body">Are you sure you want to delete this model? This will also remove its reference image.</div>
+      <div class="modal-footer">
+        <button class="mbtn mbtn-gray"   id="mdm-cancel">Cancel</button>
+        <button class="mbtn mbtn-red"    id="mdm-confirm">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 6. Generic info / warning (for simple alerts) -->
+  <div class="modal-backdrop" id="modal-info">
+    <div class="modal">
+      <div class="modal-header"><h3 id="mi-title">Notice</h3></div>
+      <div class="modal-body" id="mi-body"></div>
+      <div class="modal-footer">
+        <button class="mbtn mbtn-maroon" id="mi-ok">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 7. Add Patient -->
+  <div class="modal-backdrop" id="modal-add-patient">
+    <div class="modal" style="max-width:440px;">
+      <div class="modal-header"><h3>Add Patient</h3></div>
+      <div class="modal-body">
+        <div class="add-patient-form">
+          <div class="ap-field">
+            <span class="ap-label">Full Name</span>
+            <input class="ap-input" id="ap-name" type="text" placeholder="e.g. Juan dela Cruz" maxlength="80" />
+          </div>
+          <div class="ap-field">
+            <span class="ap-label">Bed Number</span>
+            <input class="ap-input" id="ap-bed" type="text" placeholder="e.g. Bed 07" maxlength="20" />
+          </div>
+          <div class="ap-field">
+            <span class="ap-label">Condition / Diagnosis</span>
+            <input class="ap-input" id="ap-condition" type="text" placeholder="e.g. Hypertensive Crisis" maxlength="100" />
+          </div>
+          <div class="ap-field">
+            <span class="ap-label">Status</span>
+            <select class="ap-select" id="ap-status">
+              <option value="stable">Stable</option>
+              <option value="warning">Warning</option>
+              <option value="critical">Critical</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="mbtn mbtn-gray"   id="map-cancel">Cancel</button>
+        <button class="mbtn mbtn-maroon" id="map-confirm">Add Patient</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ BOTTOM NAV ════════════════════════════════════════════════ -->
+  <nav id="bottom-nav">
+    <button class="bnav-item" id="bnav-home"     data-screen="home">
+      <span class="bnav-icon">🏠</span>Home
+    </button>
+    <button class="bnav-item" id="bnav-records"  data-screen="patientlist">
+      <span class="bnav-icon">🧑‍⚕️</span>Records
+    </button>
+    <button class="bnav-item" id="bnav-history"  data-screen="history">
+      <span class="bnav-icon">📊</span>History
+    </button>
+    <button class="bnav-item" id="bnav-settings" data-screen="settings">
+      <span class="bnav-icon">⚙️</span>Settings
+    </button>
+  </nav>
+
+  <!-- ══ JAVASCRIPT ════════════════════════════════════════════════ -->
+  <script>
+    // ── Screen router ──────────────────────────────────────────────
+    const HIDE_BNAV_SCREENS = new Set(['login', 'loading']);
+
+    function showScreen(id) {
+      document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+      document.getElementById('screen-' + id).classList.add('active');
+
+      // Bottom nav visibility
+      const nav = document.getElementById('bottom-nav');
+      if (HIDE_BNAV_SCREENS.has(id)) {
+        nav.classList.remove('visible');
+      } else {
+        nav.classList.add('visible');
+        // Highlight active tab
+        document.querySelectorAll('.bnav-item').forEach(btn => {
+          btn.classList.toggle('active', btn.dataset.screen === id);
+        });
+      }
+    }
+
+    // ── Modal engine ────────────────────────────────────────────────
+    function openModal(id)  { document.getElementById(id).classList.add('open'); }
+    function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+    // Close on backdrop click
+    document.querySelectorAll('.modal-backdrop').forEach(bd => {
+      bd.addEventListener('click', e => { if (e.target === bd) bd.classList.remove('open'); });
+    });
+
+    // Generic info modal (replaces simple alert())
+    function showInfo(title, body, cb) {
+      document.getElementById('mi-title').textContent = title;
+      document.getElementById('mi-body').textContent  = body;
+      openModal('modal-info');
+      const btn = document.getElementById('mi-ok');
+      const handler = () => { closeModal('modal-info'); btn.removeEventListener('click', handler); if (cb) cb(); };
+      btn.addEventListener('click', handler);
+    }
+
+    // ── Wire static modal buttons ───────────────────────────────────
+
+    // Modal 3 — Logout
+    document.getElementById('mlo-cancel').addEventListener('click',  () => closeModal('modal-logout'));
+    document.getElementById('mlo-confirm').addEventListener('click', () => {
+      closeModal('modal-logout');
+      currentUser = null;
+      document.getElementById('username').value = '';
+      document.getElementById('password').value = '';
+      showScreen('login');
+    });
+
+    // Modal 4 — No Reference Image
+    document.getElementById('mnr-cancel').addEventListener('click',  () => closeModal('modal-no-ref'));
+    document.getElementById('mnr-settings').addEventListener('click', () => {
+      closeModal('modal-no-ref');
+      renderMonitorList();
+      showScreen('settings');
+    });
+
+    // Modal 6 — Generic info OK
+    document.getElementById('mi-ok').addEventListener('click', () => closeModal('modal-info'));
+
+    // ── State ──────────────────────────────────────────────────────
+    let currentUser = null;
+
+    // ── Greeting helper ────────────────────────────────────────────
+    function getGreeting() {
+      const h = new Date().getHours();
+      if (h < 12) return 'Good morning';
+      if (h < 17) return 'Good afternoon';
+      return 'Good evening';
+    }
+
+    // ── Login logic ────────────────────────────────────────────────
+    const DEMO_CREDENTIALS = {
+      username: 'nurse',
+      password: 'micu2026',
+      displayName: 'Nurse Malunes',
+    };
+
+    function attemptLogin() {
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value;
+      const errorBox = document.getElementById('login-error');
+
+      if (!username || !password) {
+        errorBox.textContent = 'Please enter both username and password.';
+        errorBox.classList.add('show');
+        return;
+      }
+
+      // Placeholder auth — swap with real API call later
+      if (username === DEMO_CREDENTIALS.username && password === DEMO_CREDENTIALS.password) {
+        errorBox.classList.remove('show');
+        currentUser = { username, displayName: DEMO_CREDENTIALS.displayName };
+
+        // Populate home screen
+        const name = currentUser.displayName;
+        document.getElementById('nav-name').textContent = name;
+        document.getElementById('nav-avatar').textContent = name.split(' ').map(w => w[0]).slice(0, 2).join('');
+        document.getElementById('greeting-text').textContent =
+          getGreeting() + ', ' + name + '!';
+
+        showScreen('home');
+      } else {
+        errorBox.textContent = 'Incorrect username or password. Please try again.';
+        errorBox.classList.add('show');
+        document.getElementById('password').value = '';
+        document.getElementById('password').focus();
+      }
+    }
+
+    document.getElementById('btn-signin').addEventListener('click', attemptLogin);
+
+    // Allow Enter key to submit
+    ['username', 'password'].forEach(id => {
+      document.getElementById(id).addEventListener('keydown', e => {
+        if (e.key === 'Enter') attemptLogin();
+      });
+    });
+
+    // ── Home screen buttons ────────────────────────────────────────
+    document.getElementById('card-patient-first').addEventListener('click', () => {
+      navigationMode = 'upload';
+      renderPatientList();
+      showScreen('patientlist');
+    });
+    document.getElementById('card-photo-first').addEventListener('click', () => {
+      navigationMode  = 'photoFirst';
+      selectedPatient = null;
+      openUploadScreen(null);
+    });
+    document.getElementById('btn-records').addEventListener('click', () => {
+      navigationMode = 'records';
+      renderPatientList();
+      showScreen('patientlist');
+    });
+    document.getElementById('btn-settings').addEventListener('click', () => {
+      renderMonitorList();
+      showScreen('settings');
+    });
+    document.getElementById('btn-logout').addEventListener('click', () => {
+      openModal('modal-logout');
+    });
+
+    // ── Bottom nav wiring ──────────────────────────────────────────
+    document.getElementById('bnav-home').addEventListener('click', () => {
+      showScreen('home');
+    });
+    document.getElementById('bnav-records').addEventListener('click', () => {
+      navigationMode = 'records';
+      renderPatientList();
+      showScreen('patientlist');
+    });
+    document.getElementById('bnav-history').addEventListener('click', () => {
+      renderHistoryScreen();
+      showScreen('history');
+    });
+    document.getElementById('bnav-settings').addEventListener('click', () => {
+      renderMonitorList();
+      showScreen('settings');
+    });
+
+    // ── Patient data ───────────────────────────────────────────────
+    let PATIENTS = [
+      { id: 1, name: 'Maria Santos',    bed: 'Bed 01', condition: 'Hypertensive Crisis',       status: 'critical' },
+      { id: 2, name: 'Jose Reyes',      bed: 'Bed 02', condition: 'Acute Respiratory Failure', status: 'critical' },
+      { id: 3, name: 'Ana Dela Cruz',   bed: 'Bed 03', condition: 'Post-Op Monitoring',        status: 'stable'   },
+      { id: 4, name: 'Ramon Villanueva',bed: 'Bed 04', condition: 'Septic Shock',              status: 'warning'  },
+      { id: 5, name: 'Luz Fernandez',   bed: 'Bed 05', condition: 'Diabetic Ketoacidosis',     status: 'warning'  },
+      { id: 6, name: 'Carlos Mendoza',  bed: 'Bed 06', condition: 'Stable Angina',             status: 'stable'   },
+    ];
+    let nextPatientId = 7;
+
+    let selectedPatient  = null;
+    let navigationMode   = 'upload'; // 'upload' | 'records'
+
+    function statusLabel(s) {
+      return s.charAt(0).toUpperCase() + s.slice(1);
+    }
+
+    function renderPatientList(filter = '') {
+      const grid  = document.getElementById('pl-grid');
+      const count = document.getElementById('pl-count');
+      const q     = filter.toLowerCase();
+
+      const filtered = PATIENTS.filter(p =>
+        p.name.toLowerCase().includes(q) ||
+        p.bed.toLowerCase().includes(q)
+      );
+
+      count.textContent = filtered.length
+        ? `Showing ${filtered.length} patient${filtered.length !== 1 ? 's' : ''}`
+        : '';
+
+      if (!filtered.length) {
+        grid.innerHTML = '<div class="pl-no-results">No patients found.</div>';
+        return;
+      }
+
+      grid.innerHTML = filtered.map(p => `
+        <div class="patient-card" data-id="${p.id}">
+          <div class="pc-header">
+            <div>
+              <div class="pc-name">${p.name}</div>
+              <div class="pc-bed">${p.bed}</div>
+            </div>
+            <span class="status-badge ${p.status}">${statusLabel(p.status)}</span>
+          </div>
+          <div class="pc-condition">${p.condition}</div>
+        </div>
+      `).join('');
+
+      grid.querySelectorAll('.patient-card').forEach(card => {
+        card.addEventListener('click', () => {
+          const pid = parseInt(card.dataset.id);
+          selectedPatient = PATIENTS.find(p => p.id === pid);
+          if (navigationMode === 'records') {
+            openSummaryScreen(selectedPatient, null);
+          } else {
+            openUploadScreen(selectedPatient);
+          }
+        });
+      });
+    }
+
+    // Search input live filter
+    document.getElementById('pl-search').addEventListener('input', e => {
+      renderPatientList(e.target.value);
+    });
+
+    // Add Patient button
+    document.getElementById('btn-add-patient').addEventListener('click', () => {
+      document.getElementById('ap-name').value      = '';
+      document.getElementById('ap-bed').value       = '';
+      document.getElementById('ap-condition').value = '';
+      document.getElementById('ap-status').value    = 'stable';
+      openModal('modal-add-patient');
+      const cancelBtn  = document.getElementById('map-cancel');
+      const confirmBtn = document.getElementById('map-confirm');
+      const cleanup = () => {
+        cancelBtn.removeEventListener('click', onCancel);
+        confirmBtn.removeEventListener('click', onConfirm);
+      };
+      const onCancel  = () => { closeModal('modal-add-patient'); cleanup(); };
+      const onConfirm = () => {
+        const name      = document.getElementById('ap-name').value.trim();
+        const bed       = document.getElementById('ap-bed').value.trim();
+        const condition = document.getElementById('ap-condition').value.trim();
+        const status    = document.getElementById('ap-status').value;
+        if (!name || !bed || !condition) {
+          showInfo('Incomplete Fields', 'Please fill in Name, Bed, and Condition.');
+          return;
+        }
+        PATIENTS.push({ id: nextPatientId++, name, bed, condition, status });
+        closeModal('modal-add-patient');
+        cleanup();
+        renderPatientList(document.getElementById('pl-search').value);
+      };
+      cancelBtn.addEventListener('click', onCancel);
+      confirmBtn.addEventListener('click', onConfirm);
+    });
+
+    // Back button
+    document.getElementById('pl-back').addEventListener('click', () => {
+      document.getElementById('pl-search').value = '';
+      showScreen('home');
+    });
+
+    // ── Upload screen ──────────────────────────────────────────────
+    let sessionRefOverride = null; // base64 override for this session only
+
+    function populateMonitorDropdown() {
+      const sel = document.getElementById('upload-monitor');
+      const prev = sel.value;
+      sel.innerHTML = '<option value="">Select monitor model...</option>' +
+        monitorModels.map(m =>
+          `<option value="${m.id}">${m.name}</option>`
+        ).join('');
+      // Restore selection if still valid
+      if (prev && monitorModels.find(m => String(m.id) === prev)) sel.value = prev;
+    }
+
+    function renderRefPanel(modelId) {
+      const panel = document.getElementById('ref-panel');
+      sessionRefOverride = null; // clear any previous override
+
+      if (!modelId) {
+        panel.innerHTML = `
+          <div class="ref-empty" id="ref-empty">
+            <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            <div class="ref-empty-text">Select a monitor model to load the reference image</div>
+          </div>`;
+        return;
+      }
+
+      const model = monitorModels.find(m => m.id === parseInt(modelId));
+      if (!model) return;
+
+      if (!model.baseImage) {
+        panel.innerHTML = `
+          <div class="ref-panel-header">
+            <span class="ref-panel-label">Reference Image</span>
+            <span class="ref-panel-model">${model.name}</span>
+          </div>
+          <div class="ref-warning">
+            <div class="ref-warning-icon">⚠️</div>
+            <div class="ref-warning-text">No reference image set for this model.<br>Please go to Settings first.</div>
+            <button class="btn-go-settings" id="ref-go-settings">Go to Settings</button>
+          </div>`;
+        document.getElementById('ref-go-settings').addEventListener('click', () => {
+          renderMonitorList();
+          showScreen('settings');
+        });
+        return;
+      }
+
+      // Has a base image — show it
+      panel.innerHTML = `
+        <div class="ref-panel-header">
+          <span class="ref-panel-label">Reference Image <span style="color:#bbb;font-weight:400;text-transform:none;letter-spacing:0">(from Settings)</span></span>
+          <span class="ref-panel-model">${model.name}</span>
+        </div>
+        <img class="ref-panel-img" id="ref-panel-img" src="${model.baseImage}" alt="Reference" />
+        <label class="btn-change-ref" title="Override for this session only">
+          ✎ Change
+          <input type="file" accept="image/*" id="ref-override-input" />
+        </label>`;
+
+      document.getElementById('ref-override-input').addEventListener('change', e => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = ev => {
+          sessionRefOverride = ev.target.result;
+          document.getElementById('ref-panel-img').src = ev.target.result;
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function openUploadScreen(patient) {
+      document.getElementById('upload-patient-name').textContent = patient ? patient.name : 'Unassigned';
+      document.getElementById('upload-patient-bed').textContent  = patient ? patient.bed  : '—';
+
+      // Populate dropdown from current monitorModels
+      populateMonitorDropdown();
+
+      // Reset state
+      document.getElementById('upload-monitor').value = '';
+      renderRefPanel('');
+      resetUploadBox('box-monitor', 'input-monitor');
+      sessionRefOverride = null;
+
+      showScreen('upload');
+    }
+
+    // Dropdown change → update reference panel
+    document.getElementById('upload-monitor').addEventListener('change', e => {
+      renderRefPanel(e.target.value);
+    });
+
+    function resetUploadBox(boxId, inputId) {
+      const box   = document.getElementById(boxId);
+      const input = document.getElementById(inputId);
+      input.value = '';
+      box.classList.remove('has-image');
+      const existing = box.querySelector('.upload-preview');
+      const overlay  = box.querySelector('.upload-preview-overlay');
+      if (existing) existing.remove();
+      if (overlay)  overlay.remove();
+      box.querySelectorAll('.upload-box-icon, .upload-box-label, .upload-box-sub, .upload-box-hint')
+        .forEach(el => el.style.display = '');
+    }
+
+    function attachUploadPreview(inputId, boxId, labelText) {
+      const input = document.getElementById(inputId);
+      const box   = document.getElementById(boxId);
+      input.addEventListener('change', () => {
+        const file = input.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = e => {
+          box.querySelectorAll('.upload-box-icon, .upload-box-label, .upload-box-sub, .upload-box-hint')
+            .forEach(el => el.style.display = 'none');
+          const oldPrev = box.querySelector('.upload-preview');
+          const oldOvly = box.querySelector('.upload-preview-overlay');
+          if (oldPrev) oldPrev.remove();
+          if (oldOvly) oldOvly.remove();
+          const img = document.createElement('img');
+          img.className = 'upload-preview';
+          img.src = e.target.result;
+          box.insertBefore(img, input);
+          const overlay = document.createElement('div');
+          overlay.className = 'upload-preview-overlay';
+          overlay.textContent = labelText + ' — ' + file.name;
+          box.appendChild(overlay);
+          box.classList.add('has-image');
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    attachUploadPreview('input-monitor', 'box-monitor', 'Monitor Photo');
+
+    // Back button
+    document.getElementById('upload-back').addEventListener('click', () => {
+      if (navigationMode === 'photoFirst') {
+        showScreen('home');
+      } else {
+        renderPatientList();
+        showScreen('patientlist');
+      }
+    });
+
+    // Run Pipeline button — shows loading animation then transitions to Verify
+    document.getElementById('btn-run-pipeline').addEventListener('click', () => {
+      const modelId = document.getElementById('upload-monitor').value;
+      const hasMon  = document.getElementById('input-monitor').files.length > 0;
+
+      if (!modelId) {
+        showInfo('Select Monitor Model', 'Please select a monitor model before running the pipeline.');
+        return;
+      }
+      const model = monitorModels.find(m => m.id === parseInt(modelId));
+      const refImage = sessionRefOverride || (model && model.baseImage);
+      if (!refImage) {
+        openModal('modal-no-ref');
+        return;
+      }
+      if (!hasMon) {
+        showInfo('Monitor Photo Required', 'Please upload a monitor photo before running the pipeline.');
+        return;
+      }
+
+      runPipelineAnimation(() => openVerifyScreen(selectedPatient));
+    });
+
+    // ── Pipeline loading animation ──────────────────────────────────
+    function runPipelineAnimation(onComplete) {
+      // Reset all steps
+      for (let i = 0; i < 4; i++) {
+        const s = document.getElementById('lstep-' + i);
+        s.classList.remove('active', 'done');
+        s.querySelector('.step-icon').textContent = i + 1;
+      }
+      document.getElementById('loading-progress-fill').style.width = '0%';
+      showScreen('loading');
+
+      const durations = [600, 700, 700, 500]; // ms per step
+      const total = durations.reduce((a, b) => a + b, 0);
+      let elapsed = 0;
+
+      durations.forEach((dur, i) => {
+        const startAt = elapsed;
+        elapsed += dur;
+        setTimeout(() => {
+          if (i > 0) {
+            const prev = document.getElementById('lstep-' + (i - 1));
+            prev.classList.remove('active');
+            prev.classList.add('done');
+            prev.querySelector('.step-icon').textContent = '✓';
+          }
+          document.getElementById('lstep-' + i).classList.add('active');
+          document.getElementById('loading-progress-fill').style.width =
+            Math.round(((startAt + dur / 2) / total) * 100) + '%';
+        }, startAt + 120);
+      });
+
+      setTimeout(() => {
+        const last = document.getElementById('lstep-3');
+        last.classList.remove('active');
+        last.classList.add('done');
+        last.querySelector('.step-icon').textContent = '✓';
+        document.getElementById('loading-progress-fill').style.width = '100%';
+      }, elapsed + 120);
+
+      setTimeout(onComplete, elapsed + 500);
+    }
+    // ── Verify screen ──────────────────────────────────────────────
+    const EXTRACTED_DEFAULTS = {
+      hr: '72', spo2: '98', nibp: '120/80', map: '93', rr: '16', temp: '36.8'
+    };
+
+    function openVerifyScreen(patient) {
+      // Nav labels
+      document.getElementById('verify-patient-name').textContent = patient ? patient.name : 'Unassigned';
+      document.getElementById('verify-patient-bed').textContent  = patient ? patient.bed  : '—';
+
+      // Pre-fill form with extracted defaults
+      Object.entries(EXTRACTED_DEFAULTS).forEach(([key, val]) => {
+        const el = document.getElementById('vf-' + key);
+        if (el) el.value = val;
+      });
+
+      // Show monitor photo if uploaded
+      const monitorInput = document.getElementById('input-monitor');
+      const verifyImg    = document.getElementById('verify-img');
+      const placeholder  = document.getElementById('verify-img-placeholder');
+
+      if (monitorInput.files.length > 0) {
+        const reader = new FileReader();
+        reader.onload = e => {
+          verifyImg.src = e.target.result;
+          verifyImg.style.display = 'block';
+          placeholder.style.display = 'none';
+        };
+        reader.readAsDataURL(monitorInput.files[0]);
+      } else {
+        verifyImg.style.display = 'none';
+        placeholder.style.display = 'flex';
+      }
+
+      showScreen('verify');
+    }
+
+    // Back to Upload
+    document.getElementById('verify-back').addEventListener('click', () => {
+      showScreen('upload');
+    });
+
+    // ── Summary screen — declare data FIRST, wire listeners after ──
+    const vitalsHistory = [];
+    let unassignedEntryIdx = -1; // index of the latest "Unassigned" entry (photoFirst)
+
+    function formatTimestamp(date) {
+      return date.toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })
+        + ' '
+        + date.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function renderHistoryTable() {
+      const tbody = document.getElementById('history-tbody');
+      if (!vitalsHistory.length) {
+        tbody.innerHTML = '<tr class="no-data"><td colspan="9">No vitals recorded yet.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = vitalsHistory.map((entry, i) => {
+        const rowClass = i === 0 ? 'row-latest' : (i % 2 !== 0 ? 'row-alt' : '');
+        return `
+          <tr class="${rowClass}">
+            <td class="td-time">${entry.timestamp}</td>
+            <td class="td-patient">${entry.patient}${entry.bed !== '—' ? '<br><span style="font-weight:400;color:#aaa;font-size:0.72rem">' + entry.bed + '</span>' : ''}</td>
+            <td class="td-value">${entry.HR}</td>
+            <td class="td-value">${entry.SpO2}</td>
+            <td class="td-value">${entry.NIBP}</td>
+            <td class="td-value">${entry.MAP}</td>
+            <td class="td-value">${entry.RR}</td>
+            <td class="td-value">${entry.Temp}</td>
+            <td style="white-space:nowrap;">
+              <button class="btn-edit"   data-idx="${i}">✏ Edit</button>
+              <button class="btn-delete" data-idx="${i}">🗑 Delete</button>
+            </td>
+          </tr>`;
+      }).join('');
+
+      tbody.querySelectorAll('.btn-delete').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const idx = parseInt(btn.dataset.idx);
+          openModal('modal-delete-vital');
+          const cancelBtn  = document.getElementById('mdv-cancel');
+          const deleteBtn  = document.getElementById('mdv-confirm');
+          const cleanup = () => {
+            cancelBtn.removeEventListener('click', onCancel);
+            deleteBtn.removeEventListener('click', onDelete);
+          };
+          const onCancel = () => { closeModal('modal-delete-vital'); cleanup(); };
+          const onDelete = () => {
+            closeModal('modal-delete-vital');
+            cleanup();
+            vitalsHistory.splice(idx, 1);
+            if (unassignedEntryIdx === idx) unassignedEntryIdx = -1;
+            else if (unassignedEntryIdx > idx) unassignedEntryIdx--;
+            renderHistoryTable();
+          };
+          cancelBtn.addEventListener('click', onCancel);
+          deleteBtn.addEventListener('click', onDelete);
+        });
+      });
+
+      tbody.querySelectorAll('.btn-edit').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const idx   = parseInt(btn.dataset.idx);
+          const entry = vitalsHistory[idx];
+          // Pre-fill modal fields
+          document.getElementById('mev-hr').value   = entry.HR;
+          document.getElementById('mev-spo2').value = entry.SpO2;
+          document.getElementById('mev-nibp').value = entry.NIBP;
+          document.getElementById('mev-map').value  = entry.MAP;
+          document.getElementById('mev-rr').value   = entry.RR;
+          document.getElementById('mev-temp').value = entry.Temp;
+          openModal('modal-edit-vital');
+          const cancelBtn  = document.getElementById('mev-cancel');
+          const saveBtn    = document.getElementById('mev-confirm');
+          const cleanup = () => {
+            cancelBtn.removeEventListener('click', onCancel);
+            saveBtn.removeEventListener('click', onSave);
+          };
+          const onCancel = () => { closeModal('modal-edit-vital'); cleanup(); };
+          const onSave = () => {
+            const hr   = document.getElementById('mev-hr').value.trim();
+            const spo2 = document.getElementById('mev-spo2').value.trim();
+            const nibp = document.getElementById('mev-nibp').value.trim();
+            const map  = document.getElementById('mev-map').value.trim();
+            const rr   = document.getElementById('mev-rr').value.trim();
+            const temp = document.getElementById('mev-temp').value.trim();
+            if (!hr || !spo2 || !nibp || !map || !rr || !temp) {
+              showInfo('Incomplete Fields', 'Please fill in all vital sign fields before saving.');
+              return;
+            }
+            vitalsHistory[idx].HR   = hr;
+            vitalsHistory[idx].SpO2 = spo2;
+            vitalsHistory[idx].NIBP = nibp;
+            vitalsHistory[idx].MAP  = map;
+            vitalsHistory[idx].RR   = rr;
+            vitalsHistory[idx].Temp = temp;
+            closeModal('modal-edit-vital');
+            cleanup();
+            renderHistoryTable();
+          };
+          cancelBtn.addEventListener('click', onCancel);
+          saveBtn.addEventListener('click', onSave);
+        });
+      });
+    }
+
+    function openSummaryScreen(patient, vitals) {
+      const ts           = formatTimestamp(new Date());
+      const isPhotoFirst = (navigationMode === 'photoFirst' && patient === null);
+
+      // ── Always push to vitalsHistory immediately ──────────────────
+      if (vitals !== null) {
+        const entry = {
+          timestamp: ts,
+          patient:   patient ? patient.name : 'Unassigned',
+          bed:       patient ? patient.bed  : '—',
+          HR:   vitals.HR,
+          SpO2: vitals.SpO2,
+          NIBP: vitals.NIBP,
+          MAP:  vitals.MAP,
+          RR:   vitals.RR,
+          Temp: vitals.Temp,
+        };
+        vitalsHistory.unshift(entry);
+        unassignedEntryIdx = isPhotoFirst ? 0 : -1;
+
+        // Banner
+        const bannerEl = document.getElementById('summary-banner');
+        if (isPhotoFirst) {
+          bannerEl.style.display = 'none';
+        } else {
+          bannerEl.style.display = '';
+          document.getElementById('summary-banner-text').textContent =
+            `Vital signs successfully saved for ${patient.name} — ${patient.bed}`;
+        }
+        document.getElementById('summary-timestamp').textContent = ts;
+      } else {
+        // View-only (records mode) — don't push anything
+        document.getElementById('summary-banner').style.display = 'none';
+        document.getElementById('summary-timestamp').textContent = ts;
+        unassignedEntryIdx = -1;
+      }
+
+      // Patient header
+      document.getElementById('summary-patient-name').textContent =
+        patient ? patient.name : 'Unassigned';
+      document.getElementById('summary-patient-meta').textContent =
+        patient ? `${patient.bed}  ·  ${patient.condition}` : 'No patient assigned yet';
+
+      // Bottom buttons — depend on mode
+      document.getElementById('btn-assign-patient').style.display  = 'none';
+      document.getElementById('btn-back-patientlist').style.display = isPhotoFirst ? 'none' : '';
+      document.getElementById('btn-record-another').style.display   = isPhotoFirst ? ''     : 'none';
+
+      // Assign panel — auto-visible for photoFirst new save, hidden otherwise
+      const assignPanel = document.getElementById('assign-panel');
+      if (isPhotoFirst && vitals !== null) {
+        assignPanel.style.display = '';
+        document.getElementById('assign-confirmed').style.display = 'none';
+        document.getElementById('assign-controls').style.display  = '';
+        document.getElementById('assign-search').value = '';
+        renderAssignResults('');
+      } else {
+        assignPanel.style.display = 'none';
+      }
+
+      renderHistoryTable();
+      showScreen('summary');
+    }
+
+    // Confirm & Save (Verify screen)
+    document.getElementById('btn-confirm-save').addEventListener('click', () => {
+      const vitals = {
+        HR:   document.getElementById('vf-hr').value.trim(),
+        SpO2: document.getElementById('vf-spo2').value.trim(),
+        NIBP: document.getElementById('vf-nibp').value.trim(),
+        MAP:  document.getElementById('vf-map').value.trim(),
+        RR:   document.getElementById('vf-rr').value.trim(),
+        Temp: document.getElementById('vf-temp').value.trim(),
+      };
+      const empty = Object.entries(vitals).find(([, v]) => !v);
+      if (empty) {
+        showInfo('Missing Field', `Please fill in the ${empty[0]} field before saving.`);
+        return;
+      }
+      const patientLabel = selectedPatient ? selectedPatient.name : 'this patient';
+      document.getElementById('mss-body').textContent =
+        `Vital signs for ${patientLabel} have been recorded.`;
+      openModal('modal-save-success');
+      const viewBtn = document.getElementById('mss-confirm');
+      const handler = () => {
+        closeModal('modal-save-success');
+        viewBtn.removeEventListener('click', handler);
+        openSummaryScreen(selectedPatient, vitals);
+      };
+      viewBtn.addEventListener('click', handler);
+    });
+
+    // Export CSV
+    document.getElementById('btn-export-csv').addEventListener('click', () => {
+      if (!vitalsHistory.length) { showInfo('No Data', 'No vitals have been recorded yet. Save at least one entry first.'); return; }
+      const header = ['Date & Time', 'Patient', 'Bed', 'HR (bpm)', 'SpO2 (%)', 'NIBP (mmHg)', 'MAP (mmHg)', 'RR (brpm)', 'Temp (°C)'];
+      const rows   = vitalsHistory.map(e =>
+        [e.timestamp, e.patient, e.bed, e.HR, e.SpO2, e.NIBP, e.MAP, e.RR, e.Temp]
+          .map(v => `"${String(v).replace(/"/g, '""')}"`)
+          .join(',')
+      );
+      const blob = new Blob([[header.join(','), ...rows].join('\r\n')], { type: 'text/csv' });
+      const a    = Object.assign(document.createElement('a'), {
+        href: URL.createObjectURL(blob),
+        download: `monixor_vitals_${new Date().toISOString().slice(0,10)}.csv`,
+      });
+      a.click();
+      URL.revokeObjectURL(a.href);
+    });
+
+    // Back to Home
+    document.getElementById('btn-back-home').addEventListener('click', () => {
+      selectedPatient = null;
+      document.getElementById('pl-search').value = '';
+      showScreen('home');
+    });
+
+    // Back to Patient List (patientFirst mode)
+    document.getElementById('btn-back-patientlist').addEventListener('click', () => {
+      navigationMode = 'records';
+      renderPatientList();
+      showScreen('patientlist');
+    });
+
+    // Record Another Patient (photoFirst mode)
+    document.getElementById('btn-record-another').addEventListener('click', () => {
+      // Keep monitor model selection, clear only the photo
+      resetUploadBox('box-monitor', 'input-monitor');
+      renderRefPanel(document.getElementById('upload-monitor').value);
+      showScreen('upload');
+    });
+
+    // ── Inline Assign to Patient (Photo First) ─────────────────────
+    function renderAssignResults(filter) {
+      const q   = filter.toLowerCase();
+      const box = document.getElementById('assign-results');
+      const matches = PATIENTS.filter(p =>
+        p.name.toLowerCase().includes(q) || p.bed.toLowerCase().includes(q)
+      );
+      if (!matches.length) {
+        box.innerHTML = '<div style="padding:0.5rem;color:var(--muted);font-size:0.82rem;">No patients found.</div>';
+        return;
+      }
+      box.innerHTML = matches.map(p => `
+        <div class="assign-item" data-pid="${p.id}">
+          <span class="assign-item-name">${p.name}</span>
+          <span class="assign-item-bed">${p.bed}</span>
+        </div>`).join('');
+      box.querySelectorAll('.assign-item').forEach(item => {
+        item.addEventListener('click', () => {
+          const p = PATIENTS.find(x => x.id === parseInt(item.dataset.pid));
+          // Update the history entry
+          if (unassignedEntryIdx >= 0 && unassignedEntryIdx < vitalsHistory.length) {
+            vitalsHistory[unassignedEntryIdx].patient = p.name;
+            vitalsHistory[unassignedEntryIdx].bed     = p.bed;
+          }
+          // Update header
+          document.getElementById('summary-patient-name').textContent = p.name;
+          document.getElementById('summary-patient-meta').textContent = `${p.bed}  ·  ${p.condition}`;
+          // Show confirmation, hide controls
+          const conf = document.getElementById('assign-confirmed');
+          conf.textContent = `✓ Assigned to ${p.name} — ${p.bed}`;
+          conf.style.display = '';
+          document.getElementById('assign-controls').style.display = 'none';
+          document.getElementById('btn-assign-patient').style.display = 'none';
+          unassignedEntryIdx = -1;
+          renderHistoryTable();
+        });
+      });
+    }
+
+    document.getElementById('assign-search').addEventListener('input', e => {
+      renderAssignResults(e.target.value);
+    });
+
+    // ── History screen (Screen 7) ──────────────────────────────────
+    function renderHistoryScreen(filter = '') {
+      const q     = filter.toLowerCase();
+      const tbody = document.getElementById('history-screen-tbody');
+      const stat  = document.getElementById('history-stat');
+
+      const filtered = vitalsHistory.filter(e =>
+        e.patient.toLowerCase().includes(q) ||
+        (e.bed && e.bed.toLowerCase().includes(q))
+      );
+
+      stat.textContent = filtered.length
+        ? `${filtered.length} record${filtered.length !== 1 ? 's' : ''}${filter ? ' matching "' + filter + '"' : ''}`
+        : filter ? 'No records match your search.' : 'No vitals recorded yet.';
+
+      if (!filtered.length) {
+        tbody.innerHTML = `<tr class="no-data"><td colspan="9">${filter ? 'No matching records.' : 'No vitals recorded yet.'}</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = filtered.map((entry, i) => {
+        const rowClass = i % 2 !== 0 ? 'row-alt' : '';
+        return `
+          <tr class="${rowClass}">
+            <td class="td-time">${entry.timestamp}</td>
+            <td class="td-patient">${entry.patient}${entry.bed !== '—' ? '<br><span style="font-weight:400;color:#aaa;font-size:0.72rem">' + entry.bed + '</span>' : ''}</td>
+            <td class="td-value">${entry.HR}</td>
+            <td class="td-value">${entry.SpO2}</td>
+            <td class="td-value">${entry.NIBP}</td>
+            <td class="td-value">${entry.MAP}</td>
+            <td class="td-value">${entry.RR}</td>
+            <td class="td-value">${entry.Temp}</td>
+            <td>—</td>
+          </tr>`;
+      }).join('');
+    }
+
+    document.getElementById('history-search').addEventListener('input', e => {
+      renderHistoryScreen(e.target.value);
+    });
+
+    document.getElementById('btn-history-export').addEventListener('click', () => {
+      if (!vitalsHistory.length) {
+        showInfo('No Data', 'No vitals have been recorded yet.');
+        return;
+      }
+      const header = ['Date & Time', 'Patient', 'Bed', 'HR (bpm)', 'SpO2 (%)', 'NIBP (mmHg)', 'MAP (mmHg)', 'RR (brpm)', 'Temp (°C)'];
+      const rows   = vitalsHistory.map(e =>
+        [e.timestamp, e.patient, e.bed, e.HR, e.SpO2, e.NIBP, e.MAP, e.RR, e.Temp]
+          .map(v => `"${String(v).replace(/"/g, '""')}"`)
+          .join(',')
+      );
+      const blob = new Blob([[header.join(','), ...rows].join('\r\n')], { type: 'text/csv' });
+      const a    = Object.assign(document.createElement('a'), {
+        href: URL.createObjectURL(blob),
+        download: `monixor_vitals_${new Date().toISOString().slice(0,10)}.csv`,
+      });
+      a.click();
+      URL.revokeObjectURL(a.href);
+    });
+
+    // ── Settings screen ────────────────────────────────────────────
+    let monitorModels = [
+      { id: 1, name: 'Mindray BeneView T8',    baseImage: null },
+      { id: 2, name: 'Philips IntelliVue MX800', baseImage: null },
+      { id: 3, name: 'GE Carescape B650',       baseImage: null },
+    ];
+    let nextModelId = 4;
+
+    function renderMonitorList() {
+      const list = document.getElementById('monitor-list');
+
+      if (!monitorModels.length) {
+        list.innerHTML = '<p style="color:var(--muted);font-size:0.9rem;">No monitor models configured yet.</p>';
+        return;
+      }
+
+      list.innerHTML = monitorModels.map(m => `
+        <div class="monitor-card" data-id="${m.id}">
+
+          <!-- Thumbnail (clickable to change image) -->
+          <div class="monitor-thumb" title="Click to change base image">
+            ${m.baseImage
+              ? `<img src="${m.baseImage}" alt="Base image" />`
+              : `<div class="monitor-thumb-placeholder">
+                   <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                   <span>No image</span>
+                 </div>`
+            }
+            <input type="file" accept="image/*" class="thumb-input" data-id="${m.id}" />
+          </div>
+
+          <!-- Info -->
+          <div class="monitor-info">
+            <div class="monitor-name">${m.name}</div>
+            <div class="monitor-img-status ${m.baseImage ? 'has-img' : ''}">
+              ${m.baseImage ? '✓ Base image uploaded' : 'No base image yet'}
+            </div>
+          </div>
+
+          <!-- Actions -->
+          <div class="monitor-card-actions">
+            <label class="btn-upload-base">
+              Upload Base Image
+              <input type="file" accept="image/*" class="base-input" data-id="${m.id}" />
+            </label>
+            <button class="btn-delete-model" data-id="${m.id}">🗑 Delete</button>
+          </div>
+
+        </div>
+      `).join('');
+
+      // Thumbnail click → file input
+      list.querySelectorAll('.thumb-input').forEach(input => {
+        input.addEventListener('change', e => handleBaseImageUpload(e, parseInt(input.dataset.id)));
+      });
+
+      // Upload Base Image button
+      list.querySelectorAll('.base-input').forEach(input => {
+        input.addEventListener('change', e => handleBaseImageUpload(e, parseInt(input.dataset.id)));
+      });
+
+      // Delete model
+      list.querySelectorAll('.btn-delete-model').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = parseInt(btn.dataset.id);
+          const model = monitorModels.find(m => m.id === id);
+          document.getElementById('mdm-body').textContent =
+            `Are you sure you want to delete "${model.name}"? This will also remove its reference image.`;
+          openModal('modal-delete-model');
+          const cancelBtn = document.getElementById('mdm-cancel');
+          const deleteBtn = document.getElementById('mdm-confirm');
+          const cleanup = () => {
+            cancelBtn.removeEventListener('click', onCancel);
+            deleteBtn.removeEventListener('click', onDelete);
+          };
+          const onCancel = () => { closeModal('modal-delete-model'); cleanup(); };
+          const onDelete = () => {
+            closeModal('modal-delete-model');
+            cleanup();
+            monitorModels = monitorModels.filter(m => m.id !== id);
+            renderMonitorList();
+            populateMonitorDropdown();
+          };
+          cancelBtn.addEventListener('click', onCancel);
+          deleteBtn.addEventListener('click', onDelete);
+        });
+      });
+    }
+
+    function handleBaseImageUpload(e, modelId) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const model = monitorModels.find(m => m.id === modelId);
+        if (model) {
+          model.baseImage = ev.target.result;
+          renderMonitorList();
+          populateMonitorDropdown();
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+
+    // Back button
+    document.getElementById('settings-back').addEventListener('click', () => {
+      // Hide add-model row if open
+      document.getElementById('add-monitor-row').style.display = 'none';
+      document.getElementById('btn-add-monitor').style.display = '';
+      document.getElementById('add-monitor-input').value = '';
+      showScreen('home');
+    });
+
+    // Add Monitor Model
+    const addMonitorBtn   = document.getElementById('btn-add-monitor');
+    const addMonitorRow   = document.getElementById('add-monitor-row');
+    const addMonitorInput = document.getElementById('add-monitor-input');
+
+    addMonitorBtn.addEventListener('click', () => {
+      addMonitorRow.style.display = 'flex';
+      addMonitorBtn.style.display = 'none';
+      addMonitorInput.focus();
+    });
+
+    document.getElementById('btn-save-model').addEventListener('click', () => {
+      const name = addMonitorInput.value.trim();
+      if (!name) {
+        addMonitorInput.focus();
+        return;
+      }
+      if (monitorModels.some(m => m.name.toLowerCase() === name.toLowerCase())) {
+        showInfo('Duplicate Model', 'A monitor model with that name already exists.');
+        return;
+      }
+      monitorModels.push({ id: nextModelId++, name, baseImage: null });
+      addMonitorInput.value = '';
+      addMonitorRow.style.display = 'none';
+      addMonitorBtn.style.display = '';
+      renderMonitorList();
+      populateMonitorDropdown();
+    });
+
+    // Allow Enter to save new model
+    addMonitorInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') document.getElementById('btn-save-model').click();
+      if (e.key === 'Escape') {
+        addMonitorRow.style.display = 'none';
+        addMonitorBtn.style.display = '';
+        addMonitorInput.value = '';
+      }
+    });
+  </script>
+</body>
+</html>
