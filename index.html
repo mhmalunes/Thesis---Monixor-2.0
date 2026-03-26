@@ -2929,12 +2929,25 @@
         return;
       }
 
-      runPipelineAnimation(() => openVerifyScreen(selectedPatient));
+      // Send to pipeline server
+      const monitorFile = document.getElementById('input-monitor').files[0];
+      runPipelineWithFetch(monitorFile, refImage, selectedPatient);
     });
 
-    // ── Pipeline loading animation ──────────────────────────────────
-    function runPipelineAnimation(onComplete) {
-      // Reset all steps
+    // ── Helper: base64 data URL → Blob ─────────────────────────────
+    function dataURLtoBlob(dataURL) {
+      const arr  = dataURL.split(',');
+      const mime = arr[0].match(/:(.*?);/)[1];
+      const bstr = atob(arr[1]);
+      let n = bstr.length;
+      const u8 = new Uint8Array(n);
+      while (n--) u8[n] = bstr.charCodeAt(n);
+      return new Blob([u8], { type: mime });
+    }
+
+    // ── Pipeline: animate loading screen + real fetch ───────────────
+    function runPipelineWithFetch(monitorFile, refDataURL, patient) {
+      // Reset loading screen
       for (let i = 0; i < 4; i++) {
         const s = document.getElementById('lstep-' + i);
         s.classList.remove('active', 'done');
@@ -2943,14 +2956,16 @@
       document.getElementById('loading-progress-fill').style.width = '0%';
       showScreen('loading');
 
-      const durations = [600, 700, 700, 500]; // ms per step
-      const total = durations.reduce((a, b) => a + b, 0);
-      let elapsed = 0;
+      // Animate steps while fetch is in progress
+      const durations = [600, 700, 700, 500];
+      const total     = durations.reduce((a, b) => a + b, 0);
+      let elapsed     = 0;
+      const timers    = [];
 
       durations.forEach((dur, i) => {
         const startAt = elapsed;
         elapsed += dur;
-        setTimeout(() => {
+        timers.push(setTimeout(() => {
           if (i > 0) {
             const prev = document.getElementById('lstep-' + (i - 1));
             prev.classList.remove('active');
@@ -2960,34 +2975,57 @@
           document.getElementById('lstep-' + i).classList.add('active');
           document.getElementById('loading-progress-fill').style.width =
             Math.round(((startAt + dur / 2) / total) * 100) + '%';
-        }, startAt + 120);
+        }, startAt + 120));
       });
 
-      setTimeout(() => {
-        const last = document.getElementById('lstep-3');
-        last.classList.remove('active');
-        last.classList.add('done');
-        last.querySelector('.step-icon').textContent = '✓';
-        document.getElementById('loading-progress-fill').style.width = '100%';
-      }, elapsed + 120);
+      // Build FormData
+      const fd = new FormData();
+      fd.append('monitor_photo',   monitorFile);
+      fd.append('reference_image', dataURLtoBlob(refDataURL), 'reference.jpg');
 
-      setTimeout(onComplete, elapsed + 500);
+      fetch('http://localhost:5000/run_pipeline', { method: 'POST', body: fd })
+        .then(res => {
+          if (!res.ok) throw new Error('Server returned ' + res.status);
+          return res.json();
+        })
+        .then(vitals => {
+          // Stop animation timers and snap to 100%
+          timers.forEach(clearTimeout);
+          for (let i = 0; i < 4; i++) {
+            const s = document.getElementById('lstep-' + i);
+            s.classList.remove('active');
+            s.classList.add('done');
+            s.querySelector('.step-icon').textContent = '✓';
+          }
+          document.getElementById('loading-progress-fill').style.width = '100%';
+          // Short pause so the user sees 100% complete, then go to Verify
+          setTimeout(() => openVerifyScreen(patient, vitals), 400);
+        })
+        .catch(err => {
+          timers.forEach(clearTimeout);
+          console.error('Pipeline fetch failed:', err);
+          showScreen('upload');
+          showInfo(
+            'Pipeline Server Unreachable',
+            'Could not connect to pipeline_api.py on localhost:5000. ' +
+            'Make sure the server is running: python pipeline_api.py'
+          );
+        });
     }
-    // ── Verify screen ──────────────────────────────────────────────
-    const EXTRACTED_DEFAULTS = {
-      hr: '72', spo2: '98', nibp: '120/80', map: '93', rr: '16', temp: '36.8'
-    };
 
-    function openVerifyScreen(patient) {
+    // ── Verify screen ──────────────────────────────────────────────
+    function openVerifyScreen(patient, vitals) {
       // Nav labels
       document.getElementById('verify-patient-name').textContent = patient ? patient.name : 'Unassigned';
       document.getElementById('verify-patient-bed').textContent  = patient ? patient.bed  : '—';
 
-      // Pre-fill form with extracted defaults
-      Object.entries(EXTRACTED_DEFAULTS).forEach(([key, val]) => {
-        const el = document.getElementById('vf-' + key);
-        if (el) el.value = val;
-      });
+      // Fill form — use pipeline values when available, fall back to empty
+      document.getElementById('vf-hr').value   = (vitals && vitals.HR)   || '';
+      document.getElementById('vf-spo2').value = (vitals && vitals.SpO2) || '';
+      document.getElementById('vf-nibp').value = (vitals && vitals.NIBP) || '';
+      document.getElementById('vf-map').value  = (vitals && vitals.MAP)  || '';
+      document.getElementById('vf-rr').value   = (vitals && vitals.RR)   || '';
+      document.getElementById('vf-temp').value = (vitals && vitals.Temp) || '';
 
       // Show monitor photo if uploaded
       const monitorInput = document.getElementById('input-monitor');
@@ -2995,13 +3033,13 @@
       const placeholder  = document.getElementById('verify-img-placeholder');
 
       if (monitorInput.files.length > 0) {
-        const reader = new FileReader();
-        reader.onload = e => {
+        const fr = new FileReader();
+        fr.onload = e => {
           verifyImg.src = e.target.result;
           verifyImg.style.display = 'block';
           placeholder.style.display = 'none';
         };
-        reader.readAsDataURL(monitorInput.files[0]);
+        fr.readAsDataURL(monitorInput.files[0]);
       } else {
         verifyImg.style.display = 'none';
         placeholder.style.display = 'flex';
