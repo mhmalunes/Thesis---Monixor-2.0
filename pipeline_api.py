@@ -158,11 +158,11 @@ def _mask_waveforms(img: np.ndarray) -> np.ndarray:
     # Highly saturated, non-dark pixels → coloured waveform lines
     wave_mask = ((hsv[:, :, 1] > 140) & (hsv[:, :, 2] > 80)).astype(np.uint8) * 255
 
-    # Only apply in the left 60 % — vital values on the right stay intact
-    wave_mask[:, int(w * 0.60):] = 0
-
+    # Only apply in the left 60 % — vital values on the right stay intact.
+    # Zero AFTER dilation so dilated edges don't bleed into the right side.
     kernel    = np.ones((9, 9), np.uint8)
     wave_mask = cv2.dilate(wave_mask, kernel, iterations=2)
+    wave_mask[:, int(w * 0.60):] = 0
 
     result              = img.copy()
     result[wave_mask > 0] = 0
@@ -484,11 +484,63 @@ def run_pipeline(monitor_path: str) -> dict:
             fc.sort(key=lambda v: v[2], reverse=True)
             paired["Resp"] = {"value": fc[0][0], "value_conf": round(fc[0][2], 2)}
 
+    # ── NIBP standalone fallback (runs when NIBP label was never detected) ────
+    if "NIBP" not in paired:
+        # Look for a "sys/dia" token in the right half with valid BP range
+        fc = [(t, c, f) for (t, c, f, b) in values_found
+              if "/" in t and c[0] > img_w * 0.45]
+        valid_nibp = []
+        for (t, c, f) in fc:
+            parts = t.split("/")
+            if len(parts) == 2:
+                try:
+                    s, d = int(parts[0]), int(parts[1])
+                    if 50 <= s <= 220 and 30 <= d <= 130 and s > d:
+                        valid_nibp.append((t, c, f))
+                except ValueError:
+                    pass
+        if valid_nibp:
+            # Prefer the rightmost (main reading, not the small history list)
+            valid_nibp.sort(key=lambda v: v[1][0], reverse=True)
+            best = valid_nibp[0]
+            paired["NIBP"] = {"value": best[0], "value_conf": round(best[2], 2)}
+            # Try to find MAP near it
+            nibp_pos = best[1]
+            mc = [(t, c, f) for (t, c, f, b) in values_found
+                  if _dist(nibp_pos, c) < img_w * 0.20
+                  and (t.startswith("(") or (t.isdigit() and 40 <= int(t) <= 130))
+                  and t != best[0]]
+            if mc:
+                mc.sort(key=lambda v: _dist(nibp_pos, v[1]))
+                map_val = mc[0][0]
+
     if not map_val:
         mc = [(t, c, f) for (t, c, f, b) in values_found if t.startswith("(") and t.endswith(")")]
         if mc:
             mc.sort(key=lambda v: v[2], reverse=True)
             map_val = mc[0][0]
+
+    # MAP bare-integer fallback: if still no MAP but NIBP found, look for a
+    # plausible MAP integer (mean ≈ dia + 1/3 pulse pressure) near the NIBP value
+    if not map_val and "NIBP" in paired:
+        nibp_parts = paired["NIBP"]["value"].split("/")
+        if len(nibp_parts) == 2:
+            try:
+                s, d   = int(nibp_parts[0]), int(nibp_parts[1])
+                lo, hi = d - 5, s - 5        # MAP must be between dia and sys
+                nibp_ctr = next(
+                    (c for (t, c, f, b) in values_found if t == paired["NIBP"]["value"]),
+                    None,
+                )
+                if nibp_ctr:
+                    mc = [(t, c, f) for (t, c, f, b) in values_found
+                          if t.isdigit() and lo <= int(t) <= hi
+                          and _dist(nibp_ctr, c) < img_w * 0.25]
+                    if mc:
+                        mc.sort(key=lambda v: _dist(nibp_ctr, v[1]))
+                        map_val = mc[0][0]
+            except ValueError:
+                pass
 
     result = {
         "HR"  : paired.get("HR",   {}).get("value", ""),
