@@ -69,6 +69,8 @@ IGNORE_PHRASES = [
     "too low", "too high", "alarm", "alert", "sys", "sya",
     "source", "list", "configuration", "monitor", "patient",
     "manual", "standby", "review",
+    # alarm banner variants (e.g. "** NIBP-Mean Too Low")
+    "nibp-mean", "nibp mean", "mean too", "- mean",
 ]
 
 # Short keywords that must match exactly (not as substrings) to avoid false positives
@@ -382,7 +384,7 @@ def run_pipeline(monitor_path: str) -> dict:
             cands = [(t, c, f) for (t, c, f, b) in values_found
                      if c[1] > BELOW and c[0] > lx + 30
                      and "." not in t and "/" not in t and not t.startswith("(")
-                     and f >= 0.4 and t.isdigit() and 20 <= int(t) <= 300]
+                     and f >= 0.25 and t.isdigit() and 20 <= int(t) <= 300]
             if cands:
                 cands.sort(key=lambda v: _dist(lcenter, v[1]))
                 paired["HR"] = {"value": cands[0][0], "value_conf": round(cands[0][2], 2)}
@@ -465,7 +467,7 @@ def run_pipeline(monitor_path: str) -> dict:
         fc = [(t, c, f) for (t, c, f, b) in values_found
               if t.isdigit() and 20 <= int(t) <= 300
               and c[1] < img_h * 0.40 and c[0] > img_w * 0.55
-              and f >= 0.4
+              and f >= 0.25
               and t not in [paired.get("SpO2", {}).get("value", ""),
                             paired.get("PR",   {}).get("value", "")]]
         if fc:
