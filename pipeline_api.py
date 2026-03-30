@@ -455,14 +455,14 @@ def run_pipeline(monitor_path: str) -> dict:
             paired["HR"] = {"value": fc[0][0], "value_conf": round(fc[0][2], 2)}
 
     if "SpO2" not in paired:
-        # Use vertical position to separate from HR — do NOT exclude by value text
-        # because HR and SpO2 can legitimately be the same number (e.g. both 98).
-        # HR lives in the top ~30%, SpO2 in the middle ~35-55%.
+        # SpO2 is always left of PR on screen (x < ~75%).
+        # Sort by x ascending so the leftmost candidate wins when confidence ties.
         fc = [(t, c, f) for (t, c, f, b) in values_found
               if t.isdigit() and 70 <= int(t) <= 100
-              and c[0] > img_w * 0.50 and c[1] > img_h * 0.30]
+              and img_w * 0.50 < c[0] < img_w * 0.75
+              and c[1] > img_h * 0.30]
         if fc:
-            fc.sort(key=lambda v: v[2], reverse=True)
+            fc.sort(key=lambda v: (-v[2], v[1][0]))  # highest conf first, then leftmost
             paired["SpO2"] = {"value": fc[0][0], "value_conf": round(fc[0][2], 2)}
 
     if "PR" not in paired and "SpO2" in paired:
