@@ -563,6 +563,71 @@ def health():
     return jsonify({"status": "ok"})
 
 
+@app.route("/debug_ocr", methods=["POST"])
+def debug_ocr():
+    """
+    POST /debug_ocr  — temporary debug endpoint
+    Same input as /run_pipeline but returns raw OCR detections so we can
+    see exactly what text was read and at what positions.
+    Remove this endpoint once debugging is done.
+    """
+    if "monitor_photo" not in request.files:
+        return jsonify({"error": "'monitor_photo' file is required."}), 400
+
+    uid          = uuid.uuid4().hex[:8]
+    monitor_path = os.path.join(TEMP_DIR, f"debug_{uid}.jpg")
+    request.files["monitor_photo"].save(monitor_path)
+
+    try:
+        img          = cv2.imread(monitor_path)
+        img_straight = _deskew(img)
+
+        gray_c     = cv2.cvtColor(img_straight, cv2.COLOR_BGR2GRAY)
+        glare_mask = (gray_c > 240).astype(np.uint8) * 255
+        if np.count_nonzero(glare_mask) / glare_mask.size * 100 >= 5.0:
+            kernel = np.ones((3, 3), np.uint8)
+            img_dg = cv2.inpaint(img_straight, cv2.dilate(glare_mask, kernel), 2, cv2.INPAINT_TELEA)
+        else:
+            img_dg = img_straight.copy()
+
+        img_masked = _mask_waveforms(img_dg)
+        if img_masked.shape[1] > 900:
+            scale      = 900 / img_masked.shape[1]
+            ocr_img    = cv2.resize(img_masked, (900, int(img_masked.shape[0] * scale)),
+                                    interpolation=cv2.INTER_AREA)
+        else:
+            ocr_img = img_masked
+
+        raw = reader.readtext(ocr_img, detail=1)
+        detections = []
+        for (bbox, text, conf) in raw:
+            cx = sum(pt[0] for pt in bbox) / 4
+            cy = sum(pt[1] for pt in bbox) / 4
+            cleaned = _clean_text(text)
+            detections.append({
+                "text"   : text,
+                "cleaned": cleaned,
+                "conf"   : round(conf, 3),
+                "center" : [round(cx, 1), round(cy, 1)],
+                "is_label": _identify_label(cleaned),
+                "is_value": _is_value(cleaned),
+            })
+
+        return jsonify({
+            "ocr_image_size": [ocr_img.shape[1], ocr_img.shape[0]],
+            "total_detections": len(detections),
+            "detections": sorted(detections, key=lambda d: d["center"][1]),
+        })
+    except Exception as exc:
+        logger.error(f"Debug OCR error: {exc}", exc_info=True)
+        return jsonify({"error": str(exc)}), 500
+    finally:
+        try:
+            os.remove(monitor_path)
+        except OSError:
+            pass
+
+
 @app.route("/run_pipeline", methods=["POST"])
 def pipeline_endpoint():
     """
