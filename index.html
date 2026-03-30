@@ -2082,16 +2082,7 @@
       <!-- Upload boxes: LEFT = reference (from Settings), RIGHT = photo -->
       <div class="upload-boxes">
 
-        <!-- LEFT: reference image from Settings -->
-        <div class="ref-panel" id="ref-panel">
-          <!-- content injected by JS when model is selected -->
-          <div class="ref-empty" id="ref-empty">
-            <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-            <div class="ref-empty-text">Select a monitor model to load the reference image</div>
-          </div>
-        </div>
-
-        <!-- RIGHT: monitor photo upload -->
+        <!-- monitor photo upload (reference image not required on this branch) -->
         <div class="upload-box" id="box-monitor">
           <div class="upload-box-icon">
             <svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
@@ -2927,27 +2918,13 @@
 
     // Run Pipeline button — shows loading animation then transitions to Verify
     document.getElementById('btn-run-pipeline').addEventListener('click', () => {
-      const modelId = document.getElementById('upload-monitor').value;
-      const hasMon  = document.getElementById('input-monitor').files.length > 0;
-
-      if (!modelId) {
-        showInfo('Select Monitor Model', 'Please select a monitor model before running the pipeline.');
-        return;
-      }
-      const model = monitorModels.find(m => m.id === parseInt(modelId));
-      const refImage = sessionRefOverride || (model && model.baseImage);
-      if (!refImage) {
-        openModal('modal-no-ref');
-        return;
-      }
+      const hasMon = document.getElementById('input-monitor').files.length > 0;
       if (!hasMon) {
         showInfo('Monitor Photo Required', 'Please upload a monitor photo before running the pipeline.');
         return;
       }
-
-      // Send to pipeline server
       const monitorFile = document.getElementById('input-monitor').files[0];
-      runPipelineWithFetch(monitorFile, refImage, selectedPatient);
+      runPipelineWithFetch(monitorFile, selectedPatient);
     });
 
     // ── Helper: base64 data URL → Blob ─────────────────────────────
@@ -2962,7 +2939,7 @@
     }
 
     // ── Pipeline: animate loading screen + real fetch ───────────────
-    function runPipelineWithFetch(monitorFile, refDataURL, patient) {
+    function runPipelineWithFetch(monitorFile, patient) {
       // Reset loading screen
       for (let i = 0; i < 4; i++) {
         const s = document.getElementById('lstep-' + i);
@@ -2996,8 +2973,7 @@
 
       // Build FormData
       const fd = new FormData();
-      fd.append('monitor_photo',   monitorFile);
-      fd.append('reference_image', dataURLtoBlob(refDataURL), 'reference.jpg');
+      fd.append('monitor_photo', monitorFile);
 
       fetch('http://localhost:5000/run_pipeline', { method: 'POST', body: fd })
         .then(res => {
