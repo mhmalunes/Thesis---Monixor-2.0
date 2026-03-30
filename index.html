@@ -2159,6 +2159,13 @@
           </div>
 
           <div class="vf-row">
+            <div class="vf-group">
+              <div class="vf-label">PR <span>(bpm)</span></div>
+              <input class="vf-input" id="vf-pr" type="text" value="" />
+            </div>
+          </div>
+
+          <div class="vf-row">
             <div class="vf-group full">
               <div class="vf-label">NIBP <span>(mmHg)</span></div>
               <input class="vf-input" id="vf-nibp" type="text" value="120/80" />
@@ -2242,6 +2249,7 @@
               <th>Patient</th>
               <th>HR (bpm)</th>
               <th>SpO₂ (%)</th>
+              <th>PR (bpm)</th>
               <th>NIBP (mmHg)</th>
               <th>MAP (mmHg)</th>
               <th>RR (brpm)</th>
@@ -2349,6 +2357,7 @@
               <th>Patient</th>
               <th>HR (bpm)</th>
               <th>SpO₂ (%)</th>
+              <th>PR (bpm)</th>
               <th>NIBP (mmHg)</th>
               <th>MAP (mmHg)</th>
               <th>RR (brpm)</th>
@@ -2385,6 +2394,7 @@
         <div class="edit-vitals-grid">
           <label>HR (bpm)<input id="mev-hr"   type="text" placeholder="e.g. 78"></label>
           <label>SpO₂ (%)<input id="mev-spo2" type="text" placeholder="e.g. 98"></label>
+          <label>PR (bpm)<input id="mev-pr"   type="text" placeholder="e.g. 75"></label>
           <label>NIBP (mmHg)<input id="mev-nibp" type="text" placeholder="e.g. 120/80"></label>
           <label>MAP (mmHg)<input id="mev-map"  type="text" placeholder="e.g. 93"></label>
           <label>RR (brpm)<input id="mev-rr"   type="text" placeholder="e.g. 16"></label>
@@ -3028,6 +3038,7 @@
       // Fill form — use pipeline values when available, fall back to empty
       document.getElementById('vf-hr').value   = (vitals && vitals.HR)   || '';
       document.getElementById('vf-spo2').value = (vitals && vitals.SpO2) || '';
+      document.getElementById('vf-pr').value   = (vitals && vitals.PR)   || '';
       document.getElementById('vf-nibp').value = (vitals && vitals.NIBP) || '';
       document.getElementById('vf-map').value  = (vitals && vitals.MAP)  || '';
       document.getElementById('vf-rr').value   = (vitals && vitals.RR)   || '';
@@ -3083,6 +3094,7 @@
             <td class="td-patient">${entry.patient}${entry.bed !== '—' ? '<br><span style="font-weight:400;color:#aaa;font-size:0.72rem">' + entry.bed + '</span>' : ''}</td>
             <td class="td-value">${entry.HR}</td>
             <td class="td-value">${entry.SpO2}</td>
+            <td class="td-value">${entry.PR   || '—'}</td>
             <td class="td-value">${entry.NIBP}</td>
             <td class="td-value">${entry.MAP}</td>
             <td class="td-value">${entry.RR}</td>
@@ -3125,6 +3137,7 @@
           // Pre-fill modal fields
           document.getElementById('mev-hr').value   = entry.HR;
           document.getElementById('mev-spo2').value = entry.SpO2;
+          document.getElementById('mev-pr').value   = entry.PR || '';
           document.getElementById('mev-nibp').value = entry.NIBP;
           document.getElementById('mev-map').value  = entry.MAP;
           document.getElementById('mev-rr').value   = entry.RR;
@@ -3140,6 +3153,7 @@
           const onSave = () => {
             const hr   = document.getElementById('mev-hr').value.trim();
             const spo2 = document.getElementById('mev-spo2').value.trim();
+            const pr   = document.getElementById('mev-pr').value.trim();
             const nibp = document.getElementById('mev-nibp').value.trim();
             const map  = document.getElementById('mev-map').value.trim();
             const rr   = document.getElementById('mev-rr').value.trim();
@@ -3150,6 +3164,7 @@
             }
             vitalsHistory[idx].HR   = hr;
             vitalsHistory[idx].SpO2 = spo2;
+            vitalsHistory[idx].PR   = pr;
             vitalsHistory[idx].NIBP = nibp;
             vitalsHistory[idx].MAP  = map;
             vitalsHistory[idx].RR   = rr;
@@ -3176,6 +3191,7 @@
           bed:       patient ? patient.bed  : '—',
           HR:   vitals.HR,
           SpO2: vitals.SpO2,
+          PR:   vitals.PR,
           NIBP: vitals.NIBP,
           MAP:  vitals.MAP,
           RR:   vitals.RR,
@@ -3233,6 +3249,7 @@
       const vitals = {
         HR:   document.getElementById('vf-hr').value.trim(),
         SpO2: document.getElementById('vf-spo2').value.trim(),
+        PR:   document.getElementById('vf-pr').value.trim(),
         NIBP: document.getElementById('vf-nibp').value.trim(),
         MAP:  document.getElementById('vf-map').value.trim(),
         RR:   document.getElementById('vf-rr').value.trim(),
@@ -3367,6 +3384,7 @@
             <td class="td-patient">${entry.patient}${entry.bed !== '—' ? '<br><span style="font-weight:400;color:#aaa;font-size:0.72rem">' + entry.bed + '</span>' : ''}</td>
             <td class="td-value">${entry.HR}</td>
             <td class="td-value">${entry.SpO2}</td>
+            <td class="td-value">${entry.PR   || '—'}</td>
             <td class="td-value">${entry.NIBP}</td>
             <td class="td-value">${entry.MAP}</td>
             <td class="td-value">${entry.RR}</td>

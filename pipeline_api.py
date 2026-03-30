@@ -562,8 +562,9 @@ def run_pipeline(monitor_path: str) -> dict:
         nibp_parts = paired["NIBP"]["value"].split("/")
         if len(nibp_parts) == 2:
             try:
-                s, d   = int(nibp_parts[0]), int(nibp_parts[1])
-                lo, hi = d - 5, s - 5        # MAP must be between dia and sys
+                s, d      = int(nibp_parts[0]), int(nibp_parts[1])
+                map_est   = round((s + 2 * d) / 3)   # standard MAP formula
+                lo, hi    = map_est - 10, map_est + 10
                 nibp_ctr = next(
                     (c for (t, c, f, b) in values_found if t == paired["NIBP"]["value"]),
                     None,
@@ -581,6 +582,7 @@ def run_pipeline(monitor_path: str) -> dict:
     result = {
         "HR"  : paired.get("HR",   {}).get("value", ""),
         "SpO2": paired.get("SpO2", {}).get("value", ""),
+        "PR"  : paired.get("PR",   {}).get("value", ""),
         "NIBP": paired.get("NIBP", {}).get("value", ""),
         "MAP" : map_val.strip("()").strip() if map_val else "",
         "RR"  : paired.get("Resp", {}).get("value", ""),
