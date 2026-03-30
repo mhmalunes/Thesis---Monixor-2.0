@@ -2071,18 +2071,9 @@
       <!-- Section title -->
       <div class="upload-section-title">Capture Vital Signs</div>
 
-      <!-- Monitor model dropdown (populated from monitorModels) -->
-      <div>
-        <div class="upload-field-label">Monitor Model</div>
-        <select class="upload-select" id="upload-monitor">
-          <option value="">Select monitor model...</option>
-        </select>
-      </div>
-
-      <!-- Upload boxes: LEFT = reference (from Settings), RIGHT = photo -->
+      <!-- Upload box: monitor photo only (no reference image needed) -->
       <div class="upload-boxes">
-
-        <!-- monitor photo upload (reference image not required on this branch) -->
+        <div style="display:none" id="upload-monitor-hidden"></div>
         <div class="upload-box" id="box-monitor">
           <div class="upload-box-icon">
             <svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
@@ -2263,38 +2254,6 @@
     </div>
   </div>
 
-  <!-- ══ SCREEN 8: SETTINGS ══════════════════════════════════════ -->
-  <div id="screen-settings" class="screen has-bottom-nav">
-
-    <nav class="sub-nav">
-      <button class="sub-nav-back" id="settings-back">&#8592; Back</button>
-      <span class="sub-nav-title">Settings</span>
-    </nav>
-
-    <div class="settings-body">
-
-      <div class="settings-section-title">Monitor Models</div>
-
-      <!-- Cards list (injected by JS) -->
-      <div class="monitor-list" id="monitor-list"></div>
-
-      <!-- Add new model area -->
-      <div class="add-monitor-row" id="add-monitor-row" style="display:none;">
-        <input
-          class="add-monitor-input"
-          id="add-monitor-input"
-          type="text"
-          placeholder="e.g. Nihon Kohden BSM-3000"
-          maxlength="80"
-        />
-        <button class="btn-save-model" id="btn-save-model">Save</button>
-      </div>
-
-      <button class="btn-add-monitor" id="btn-add-monitor">+ Add Monitor Model</button>
-
-    </div>
-  </div>
-
   <!-- ══ SCREEN: PIPELINE LOADING ══════════════════════════════════ -->
   <div id="screen-loading" class="screen">
     <div class="loading-card">
@@ -2422,31 +2381,7 @@
     </div>
   </div>
 
-  <!-- 4. No Reference Image -->
-  <div class="modal-backdrop" id="modal-no-ref">
-    <div class="modal">
-      <div class="modal-header"><h3>⚠ No Reference Image</h3></div>
-      <div class="modal-body">No base image is set for this monitor model. Please go to Settings to upload one first.</div>
-      <div class="modal-footer">
-        <button class="mbtn mbtn-gray"   id="mnr-cancel">Cancel</button>
-        <button class="mbtn mbtn-gold"   id="mnr-settings">Go to Settings</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- 5. Delete Monitor Model -->
-  <div class="modal-backdrop" id="modal-delete-model">
-    <div class="modal">
-      <div class="modal-header"><h3>Delete Monitor Model</h3></div>
-      <div class="modal-body" id="mdm-body">Are you sure you want to delete this model? This will also remove its reference image.</div>
-      <div class="modal-footer">
-        <button class="mbtn mbtn-gray"   id="mdm-cancel">Cancel</button>
-        <button class="mbtn mbtn-red"    id="mdm-confirm">Delete</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- 6. Generic info / warning (for simple alerts) -->
+  <!-- 5. Generic info / warning (for simple alerts) -->
   <div class="modal-backdrop" id="modal-info">
     <div class="modal">
       <div class="modal-header"><h3 id="mi-title">Notice</h3></div>
@@ -2503,9 +2438,6 @@
     <button class="bnav-item" id="bnav-history"  data-screen="history">
       <span class="bnav-icon">📊</span>History
     </button>
-    <button class="bnav-item" id="bnav-settings" data-screen="settings">
-      <span class="bnav-icon">⚙️</span>Settings
-    </button>
   </nav>
 
   <!-- ══ JAVASCRIPT ════════════════════════════════════════════════ -->
@@ -2559,14 +2491,6 @@
       document.getElementById('username').value = '';
       document.getElementById('password').value = '';
       showScreen('login');
-    });
-
-    // Modal 4 — No Reference Image
-    document.getElementById('mnr-cancel').addEventListener('click',  () => closeModal('modal-no-ref'));
-    document.getElementById('mnr-settings').addEventListener('click', () => {
-      closeModal('modal-no-ref');
-      renderMonitorList();
-      showScreen('settings');
     });
 
     // Modal 6 — Generic info OK
@@ -2659,11 +2583,6 @@
       renderHistoryScreen();
       showScreen('history');
     });
-    document.getElementById('bnav-settings').addEventListener('click', () => {
-      renderMonitorList();
-      showScreen('settings');
-    });
-
     // ── Patient data ───────────────────────────────────────────────
     let PATIENTS = [
       { id: 1, name: 'Maria Santos',    bed: 'Bed 01', condition: 'Hypertensive Crisis',       status: 'critical' },
@@ -2771,97 +2690,13 @@
     });
 
     // ── Upload screen ──────────────────────────────────────────────
-    let sessionRefOverride = null; // base64 override for this session only
-
-    function populateMonitorDropdown() {
-      const sel = document.getElementById('upload-monitor');
-      const prev = sel.value;
-      sel.innerHTML = '<option value="">Select monitor model...</option>' +
-        monitorModels.map(m =>
-          `<option value="${m.id}">${m.name}</option>`
-        ).join('');
-      // Restore selection if still valid
-      if (prev && monitorModels.find(m => String(m.id) === prev)) sel.value = prev;
-    }
-
-    function renderRefPanel(modelId) {
-      const panel = document.getElementById('ref-panel');
-      sessionRefOverride = null; // clear any previous override
-
-      if (!modelId) {
-        panel.innerHTML = `
-          <div class="ref-empty" id="ref-empty">
-            <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-            <div class="ref-empty-text">Select a monitor model to load the reference image</div>
-          </div>`;
-        return;
-      }
-
-      const model = monitorModels.find(m => m.id === parseInt(modelId));
-      if (!model) return;
-
-      if (!model.baseImage) {
-        panel.innerHTML = `
-          <div class="ref-panel-header">
-            <span class="ref-panel-label">Reference Image</span>
-            <span class="ref-panel-model">${model.name}</span>
-          </div>
-          <div class="ref-warning">
-            <div class="ref-warning-icon">⚠️</div>
-            <div class="ref-warning-text">No reference image set for this model.<br>Please go to Settings first.</div>
-            <button class="btn-go-settings" id="ref-go-settings">Go to Settings</button>
-          </div>`;
-        document.getElementById('ref-go-settings').addEventListener('click', () => {
-          renderMonitorList();
-          showScreen('settings');
-        });
-        return;
-      }
-
-      // Has a base image — show it
-      panel.innerHTML = `
-        <div class="ref-panel-header">
-          <span class="ref-panel-label">Reference Image <span style="color:#bbb;font-weight:400;text-transform:none;letter-spacing:0">(from Settings)</span></span>
-          <span class="ref-panel-model">${model.name}</span>
-        </div>
-        <img class="ref-panel-img" id="ref-panel-img" src="${model.baseImage}" alt="Reference" />
-        <label class="btn-change-ref" title="Override for this session only">
-          ✎ Change
-          <input type="file" accept="image/*" id="ref-override-input" />
-        </label>`;
-
-      document.getElementById('ref-override-input').addEventListener('change', e => {
-        const file = e.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = ev => {
-          sessionRefOverride = ev.target.result;
-          document.getElementById('ref-panel-img').src = ev.target.result;
-        };
-        reader.readAsDataURL(file);
-      });
-    }
-
     function openUploadScreen(patient) {
       document.getElementById('upload-patient-name').textContent = patient ? patient.name : 'Unassigned';
       document.getElementById('upload-patient-bed').textContent  = patient ? patient.bed  : '—';
 
-      // Populate dropdown from current monitorModels
-      populateMonitorDropdown();
-
-      // Reset state
-      document.getElementById('upload-monitor').value = '';
-      renderRefPanel('');
       resetUploadBox('box-monitor', 'input-monitor');
-      sessionRefOverride = null;
-
       showScreen('upload');
     }
-
-    // Dropdown change → update reference panel
-    document.getElementById('upload-monitor').addEventListener('change', e => {
-      renderRefPanel(e.target.value);
-    });
 
     function resetUploadBox(boxId, inputId) {
       const box   = document.getElementById(boxId);
@@ -3283,9 +3118,7 @@
 
     // Record Another Patient (photoFirst mode)
     document.getElementById('btn-record-another').addEventListener('click', () => {
-      // Keep monitor model selection, clear only the photo
       resetUploadBox('box-monitor', 'input-monitor');
-      renderRefPanel(document.getElementById('upload-monitor').value);
       showScreen('upload');
     });
 
@@ -3394,157 +3227,6 @@
       URL.revokeObjectURL(a.href);
     });
 
-    // ── Settings screen ────────────────────────────────────────────
-    let monitorModels = [
-      { id: 1, name: 'Mindray BeneView T8',    baseImage: null },
-      { id: 2, name: 'Philips IntelliVue MX800', baseImage: null },
-      { id: 3, name: 'GE Carescape B650',       baseImage: null },
-    ];
-    let nextModelId = 4;
-
-    function renderMonitorList() {
-      const list = document.getElementById('monitor-list');
-
-      if (!monitorModels.length) {
-        list.innerHTML = '<p style="color:var(--muted);font-size:0.9rem;">No monitor models configured yet.</p>';
-        return;
-      }
-
-      list.innerHTML = monitorModels.map(m => `
-        <div class="monitor-card" data-id="${m.id}">
-
-          <!-- Thumbnail (clickable to change image) -->
-          <div class="monitor-thumb" title="Click to change base image">
-            ${m.baseImage
-              ? `<img src="${m.baseImage}" alt="Base image" />`
-              : `<div class="monitor-thumb-placeholder">
-                   <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                   <span>No image</span>
-                 </div>`
-            }
-            <input type="file" accept="image/*" class="thumb-input" data-id="${m.id}" />
-          </div>
-
-          <!-- Info -->
-          <div class="monitor-info">
-            <div class="monitor-name">${m.name}</div>
-            <div class="monitor-img-status ${m.baseImage ? 'has-img' : ''}">
-              ${m.baseImage ? '✓ Base image uploaded' : 'No base image yet'}
-            </div>
-          </div>
-
-          <!-- Actions -->
-          <div class="monitor-card-actions">
-            <label class="btn-upload-base">
-              Upload Base Image
-              <input type="file" accept="image/*" class="base-input" data-id="${m.id}" />
-            </label>
-            <button class="btn-delete-model" data-id="${m.id}">🗑 Delete</button>
-          </div>
-
-        </div>
-      `).join('');
-
-      // Thumbnail click → file input
-      list.querySelectorAll('.thumb-input').forEach(input => {
-        input.addEventListener('change', e => handleBaseImageUpload(e, parseInt(input.dataset.id)));
-      });
-
-      // Upload Base Image button
-      list.querySelectorAll('.base-input').forEach(input => {
-        input.addEventListener('change', e => handleBaseImageUpload(e, parseInt(input.dataset.id)));
-      });
-
-      // Delete model
-      list.querySelectorAll('.btn-delete-model').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const id = parseInt(btn.dataset.id);
-          const model = monitorModels.find(m => m.id === id);
-          document.getElementById('mdm-body').textContent =
-            `Are you sure you want to delete "${model.name}"? This will also remove its reference image.`;
-          openModal('modal-delete-model');
-          const cancelBtn = document.getElementById('mdm-cancel');
-          const deleteBtn = document.getElementById('mdm-confirm');
-          const cleanup = () => {
-            cancelBtn.removeEventListener('click', onCancel);
-            deleteBtn.removeEventListener('click', onDelete);
-          };
-          const onCancel = () => { closeModal('modal-delete-model'); cleanup(); };
-          const onDelete = () => {
-            closeModal('modal-delete-model');
-            cleanup();
-            monitorModels = monitorModels.filter(m => m.id !== id);
-            renderMonitorList();
-            populateMonitorDropdown();
-          };
-          cancelBtn.addEventListener('click', onCancel);
-          deleteBtn.addEventListener('click', onDelete);
-        });
-      });
-    }
-
-    function handleBaseImageUpload(e, modelId) {
-      const file = e.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = ev => {
-        const model = monitorModels.find(m => m.id === modelId);
-        if (model) {
-          model.baseImage = ev.target.result;
-          renderMonitorList();
-          populateMonitorDropdown();
-        }
-      };
-      reader.readAsDataURL(file);
-    }
-
-    // Back button
-    document.getElementById('settings-back').addEventListener('click', () => {
-      // Hide add-model row if open
-      document.getElementById('add-monitor-row').style.display = 'none';
-      document.getElementById('btn-add-monitor').style.display = '';
-      document.getElementById('add-monitor-input').value = '';
-      showScreen('home');
-    });
-
-    // Add Monitor Model
-    const addMonitorBtn   = document.getElementById('btn-add-monitor');
-    const addMonitorRow   = document.getElementById('add-monitor-row');
-    const addMonitorInput = document.getElementById('add-monitor-input');
-
-    addMonitorBtn.addEventListener('click', () => {
-      addMonitorRow.style.display = 'flex';
-      addMonitorBtn.style.display = 'none';
-      addMonitorInput.focus();
-    });
-
-    document.getElementById('btn-save-model').addEventListener('click', () => {
-      const name = addMonitorInput.value.trim();
-      if (!name) {
-        addMonitorInput.focus();
-        return;
-      }
-      if (monitorModels.some(m => m.name.toLowerCase() === name.toLowerCase())) {
-        showInfo('Duplicate Model', 'A monitor model with that name already exists.');
-        return;
-      }
-      monitorModels.push({ id: nextModelId++, name, baseImage: null });
-      addMonitorInput.value = '';
-      addMonitorRow.style.display = 'none';
-      addMonitorBtn.style.display = '';
-      renderMonitorList();
-      populateMonitorDropdown();
-    });
-
-    // Allow Enter to save new model
-    addMonitorInput.addEventListener('keydown', e => {
-      if (e.key === 'Enter') document.getElementById('btn-save-model').click();
-      if (e.key === 'Escape') {
-        addMonitorRow.style.display = 'none';
-        addMonitorBtn.style.display = '';
-        addMonitorInput.value = '';
-      }
-    });
   </script>
 </body>
 </html>
