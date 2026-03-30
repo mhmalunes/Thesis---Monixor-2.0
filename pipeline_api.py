@@ -455,12 +455,12 @@ def run_pipeline(monitor_path: str) -> dict:
             paired["HR"] = {"value": fc[0][0], "value_conf": round(fc[0][2], 2)}
 
     if "SpO2" not in paired:
-        hr_val = paired.get("HR", {}).get("value", "")
-        # c[1] > img_h * 0.15 prevents stealing the HR value from the top strip
+        # Use vertical position to separate from HR — do NOT exclude by value text
+        # because HR and SpO2 can legitimately be the same number (e.g. both 98).
+        # HR lives in the top ~30%, SpO2 in the middle ~35-55%.
         fc = [(t, c, f) for (t, c, f, b) in values_found
               if t.isdigit() and 70 <= int(t) <= 100
-              and c[0] > img_w * 0.50 and c[1] > img_h * 0.15
-              and t != hr_val]
+              and c[0] > img_w * 0.50 and c[1] > img_h * 0.30]
         if fc:
             fc.sort(key=lambda v: v[2], reverse=True)
             paired["SpO2"] = {"value": fc[0][0], "value_conf": round(fc[0][2], 2)}
