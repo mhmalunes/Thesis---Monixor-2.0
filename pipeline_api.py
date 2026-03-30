@@ -58,7 +58,7 @@ logger.info("EasyOCR reader ready.")
 
 VITAL_LABELS = {
     "HR"  : ["ecg", "hr", "heart"],
-    "SpO2": ["spo2", "spoz", "spo", "sp02", "sp0", "oxygen"],
+    "SpO2": ["spo2", "spoz", "spo", "sp02", "sp0", "sp0z", "oxygen"],
     "PR"  : ["pr"],
     "Resp": ["resp", "rosp", "rsp", "resp.", "rr"],
     "NIBP": ["nibp", "n1bp", "nibp:"],
@@ -441,9 +441,26 @@ def run_pipeline(monitor_path: str) -> dict:
             fc.sort(key=lambda v: v[2], reverse=True)
             paired["Temp"] = {"value": fc[0][0], "value_conf": round(fc[0][2], 2)}
 
-    if "SpO2" not in paired:
+    # HR fallback runs BEFORE SpO2 — both share the 70-100 range so HR must
+    # claim its top-right value first, otherwise SpO2 fallback steals it.
+    if "HR" not in paired:
         fc = [(t, c, f) for (t, c, f, b) in values_found
-              if t.isdigit() and 70 <= int(t) <= 100 and c[0] > img_w * 0.50]
+              if t.isdigit() and 20 <= int(t) <= 300
+              and c[1] < img_h * 0.40 and c[0] > img_w * 0.55
+              and f >= 0.25
+              and t not in [paired.get("SpO2", {}).get("value", ""),
+                            paired.get("PR",   {}).get("value", "")]]
+        if fc:
+            fc.sort(key=lambda v: v[2], reverse=True)
+            paired["HR"] = {"value": fc[0][0], "value_conf": round(fc[0][2], 2)}
+
+    if "SpO2" not in paired:
+        hr_val = paired.get("HR", {}).get("value", "")
+        # c[1] > img_h * 0.15 prevents stealing the HR value from the top strip
+        fc = [(t, c, f) for (t, c, f, b) in values_found
+              if t.isdigit() and 70 <= int(t) <= 100
+              and c[0] > img_w * 0.50 and c[1] > img_h * 0.15
+              and t != hr_val]
         if fc:
             fc.sort(key=lambda v: v[2], reverse=True)
             paired["SpO2"] = {"value": fc[0][0], "value_conf": round(fc[0][2], 2)}
@@ -462,17 +479,6 @@ def run_pipeline(monitor_path: str) -> dict:
             if fc:
                 fc.sort(key=lambda v: _dist(spo2_ctr, v[1]))
                 paired["PR"] = {"value": fc[0][0], "value_conf": round(fc[0][2], 2)}
-
-    if "HR" not in paired:
-        fc = [(t, c, f) for (t, c, f, b) in values_found
-              if t.isdigit() and 20 <= int(t) <= 300
-              and c[1] < img_h * 0.40 and c[0] > img_w * 0.55
-              and f >= 0.25
-              and t not in [paired.get("SpO2", {}).get("value", ""),
-                            paired.get("PR",   {}).get("value", "")]]
-        if fc:
-            fc.sort(key=lambda v: v[2], reverse=True)
-            paired["HR"] = {"value": fc[0][0], "value_conf": round(fc[0][2], 2)}
 
     if "Resp" not in paired:
         fc = [(t, c, f) for (t, c, f, b) in values_found
