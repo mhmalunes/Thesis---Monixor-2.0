@@ -162,6 +162,10 @@ def _nibp_systolic(paired):
 
 
 def _spo2_center(paired, values):
+    # Prefer the authoritative center stored when SpO2 was paired.
+    vc = paired.get("SpO2", {}).get("value_center")
+    if vc:
+        return vc
     spo2_val = paired.get("SpO2", {}).get("value", "")
     if not spo2_val:
         return None
@@ -415,7 +419,8 @@ def run_pipeline(monitor_path: str) -> dict:
                      and f >= 0.25 and t.isdigit() and 20 <= int(t) <= 300]
             if cands:
                 cands.sort(key=lambda v: _dist(lcenter, v[1]))
-                paired["HR"] = {"value": cands[0][0], "value_conf": round(cands[0][2], 2)}
+                paired["HR"] = {"value": cands[0][0], "value_conf": round(cands[0][2], 2),
+                                "value_center": cands[0][1]}
             continue
 
         if lname == "Temp":
@@ -431,20 +436,23 @@ def run_pipeline(monitor_path: str) -> dict:
                      and not t.startswith("(") and t.isdigit() and 70 <= int(t) <= 100]
             if cands:
                 cands.sort(key=lambda v: _dist(lcenter, v[1]))
-                paired["SpO2"] = {"value": cands[0][0], "value_conf": round(cands[0][2], 2)}
+                paired["SpO2"] = {"value": cands[0][0], "value_conf": round(cands[0][2], 2),
+                                  "value_center": cands[0][1]}
             continue
 
         if lname == "PR":
             nibp_sys  = _nibp_systolic(paired)
             spo2_ctr  = _spo2_center(paired, values_found)
-            hr_val    = paired.get("HR",   {}).get("value", "")
-            spo2_val  = paired.get("SpO2", {}).get("value", "")
+            spo2_c    = paired.get("SpO2", {}).get("value_center")
+            hr_c      = paired.get("HR",   {}).get("value_center")
             if spo2_ctr:
                 cands = [(t, c, f) for (t, c, f, b) in values_found
                          if c[0] > spo2_ctr[0] - 20 and abs(c[1] - spo2_ctr[1]) < 200
                          and "." not in t and "/" not in t and not t.startswith("(")
                          and t.isdigit() and 20 < int(t) <= 250
-                         and t not in (nibp_sys, spo2_val, hr_val)]
+                         and t != nibp_sys
+                         and (spo2_c is None or _dist(c, spo2_c) > 30)
+                         and (hr_c   is None or _dist(c, hr_c)   > 30)]
             else:
                 cands = []
             if cands:
@@ -480,7 +488,8 @@ def run_pipeline(monitor_path: str) -> dict:
                             paired.get("PR",   {}).get("value", "")]]
         if fc:
             fc.sort(key=lambda v: v[2], reverse=True)
-            paired["HR"] = {"value": fc[0][0], "value_conf": round(fc[0][2], 2)}
+            paired["HR"] = {"value": fc[0][0], "value_conf": round(fc[0][2], 2),
+                            "value_center": fc[0][1]}
 
     if "SpO2" not in paired:
         # SpO2 is always left of PR on screen (x < ~75%).
@@ -491,19 +500,22 @@ def run_pipeline(monitor_path: str) -> dict:
               and c[1] > img_h * 0.30]
         if fc:
             fc.sort(key=lambda v: (-v[2], v[1][0]))  # highest conf first, then leftmost
-            paired["SpO2"] = {"value": fc[0][0], "value_conf": round(fc[0][2], 2)}
+            paired["SpO2"] = {"value": fc[0][0], "value_conf": round(fc[0][2], 2),
+                              "value_center": fc[0][1]}
 
     if "PR" not in paired and "SpO2" in paired:
         nibp_sys = _nibp_systolic(paired)
         spo2_ctr = _spo2_center(paired, values_found)
-        hr_val   = paired.get("HR",   {}).get("value", "")
-        spo2_val = paired.get("SpO2", {}).get("value", "")
+        spo2_c   = paired.get("SpO2", {}).get("value_center")
+        hr_c     = paired.get("HR",   {}).get("value_center")
         if spo2_ctr:
             fc = [(t, c, f) for (t, c, f, b) in values_found
                   if c[0] > spo2_ctr[0] and abs(c[1] - spo2_ctr[1]) < 200
                   and "." not in t and "/" not in t and not t.startswith("(")
                   and t.isdigit() and 20 < int(t) <= 250
-                  and t not in (nibp_sys, spo2_val, hr_val)]
+                  and t != nibp_sys
+                  and (spo2_c is None or _dist(c, spo2_c) > 30)
+                  and (hr_c   is None or _dist(c, hr_c)   > 30)]
             if fc:
                 fc.sort(key=lambda v: _dist(spo2_ctr, v[1]))
                 paired["PR"] = {"value": fc[0][0], "value_conf": round(fc[0][2], 2)}

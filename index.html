@@ -633,7 +633,7 @@
     /* Upload boxes row */
     .upload-boxes {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: 1fr;
       gap: 1.25rem;
     }
 
@@ -641,7 +641,7 @@
       background: var(--white);
       border: 2px dashed var(--border);
       border-radius: 12px;
-      min-height: 220px;
+      min-height: 260px;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -2073,7 +2073,6 @@
 
       <!-- Upload box: monitor photo only (no reference image needed) -->
       <div class="upload-boxes">
-        <div style="display:none" id="upload-monitor-hidden"></div>
         <div class="upload-box" id="box-monitor">
           <div class="upload-box-icon">
             <svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
@@ -2145,6 +2144,10 @@
               <div class="vf-label">PR <span>(bpm)</span></div>
               <input class="vf-input" id="vf-pr" type="text" value="" />
             </div>
+            <div class="vf-group">
+              <div class="vf-label">RR <span>(brpm)</span></div>
+              <input class="vf-input" id="vf-rr"   type="text" value="16" />
+            </div>
           </div>
 
           <div class="vf-row">
@@ -2159,13 +2162,6 @@
               <div class="vf-label">MAP <span>(mmHg)</span></div>
               <input class="vf-input" id="vf-map"  type="text" value="93" />
             </div>
-            <div class="vf-group">
-              <div class="vf-label">RR <span>(brpm)</span></div>
-              <input class="vf-input" id="vf-rr"   type="text" value="16" />
-            </div>
-          </div>
-
-          <div class="vf-row">
             <div class="vf-group">
               <div class="vf-label">Temp <span>(°C)</span></div>
               <input class="vf-input" id="vf-temp" type="text" value="36.8" />
