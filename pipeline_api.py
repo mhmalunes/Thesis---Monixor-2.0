@@ -23,6 +23,7 @@ import re
 import math
 import uuid
 import logging
+from difflib import SequenceMatcher
 
 import cv2
 import numpy as np
@@ -110,21 +111,48 @@ def _is_value(text):
     return len(noise) <= 1
 
 
+def _fuzzy_score(a: str, b: str) -> float:
+    """Similarity ratio between two strings (0–1)."""
+    return SequenceMatcher(None, a, b).ratio()
+
+
 def _identify_label(text):
+    """
+    Match OCR text to a vital-sign label using both exact/substring rules
+    and fuzzy similarity.  Fuzzy matching catches OCR misreads like
+    'Sp0z'→SpO2, 'N1BP'→NIBP, 'Reap'→Resp without hardcoding positions.
+    """
     if _should_ignore(text):
         return None
     tl = text.lower().strip().rstrip(".:,")
     if len(tl) < 2:
         return None
+
+    # ── Pass 1: exact / substring rules ──────────────────────────────────────
     for label_name, keywords in VITAL_LABELS.items():
         for kw in keywords:
             if kw in _EXACT_MATCH_KEYWORDS:
-                # Short/ambiguous keywords: exact match only to avoid false positives
                 if tl == kw:
                     return label_name
             else:
                 if kw in tl or tl in kw:
                     return label_name
+
+    # ── Pass 2: fuzzy match (handles OCR character-level errors) ─────────────
+    # Only try fuzzy on short tokens (≤8 chars) to avoid false positives on
+    # longer strings that happen to be similar to a keyword.
+    if len(tl) <= 8:
+        best_label, best_score = None, 0.0
+        for label_name, keywords in VITAL_LABELS.items():
+            for kw in keywords:
+                score = _fuzzy_score(tl, kw)
+                if score > best_score:
+                    best_score = score
+                    best_label = label_name
+        if best_score >= 0.75:
+            logger.debug(f"Fuzzy label match: '{tl}' → {best_label} (score={best_score:.2f})")
+            return best_label
+
     return None
 
 
