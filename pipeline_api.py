@@ -58,11 +58,11 @@ logger.info("EasyOCR reader ready.")
 
 VITAL_LABELS = {
     "HR"  : ["ecg", "hr", "heart"],
-    "SpO2": ["spo2", "spoz", "spo", "sp02", "sp0", "oxygen"],  # sp02/sp0: OCR 0↔O confusion
+    "SpO2": ["spo2", "spoz", "spo", "sp02", "sp0", "oxygen"],
     "PR"  : ["pr"],
-    "Resp": ["resp", "rosp", "rsp"],
-    "NIBP": ["nibp"],
-    "Temp": ["temp", "tmp"],
+    "Resp": ["resp", "rosp", "rsp", "resp.", "rr"],
+    "NIBP": ["nibp", "n1bp", "nibp:"],
+    "Temp": ["temp", "tmp", "t1", "temp.", "tc"],
 }
 
 IGNORE_PHRASES = [
@@ -70,6 +70,10 @@ IGNORE_PHRASES = [
     "source", "list", "configuration", "monitor", "patient",
     "manual", "standby", "review",
 ]
+
+# Short keywords that must match exactly (not as substrings) to avoid false positives
+# e.g. "pr" should not match "pressure", "spo" should not match random noise
+_EXACT_MATCH_KEYWORDS = {"hr", "pr", "rr", "spo", "sp0", "rsp", "tmp", "tc", "t1"}
 
 
 def _get_center(bbox):
@@ -93,7 +97,7 @@ def _should_ignore(text):
     for phrase in IGNORE_PHRASES:
         if phrase in tl:
             return True
-    return len(text.strip()) > 10
+    return len(text.strip()) > 15
 
 
 def _is_value(text):
@@ -107,13 +111,18 @@ def _is_value(text):
 def _identify_label(text):
     if _should_ignore(text):
         return None
-    tl = text.lower().strip()
+    tl = text.lower().strip().rstrip(".:,")
     if len(tl) < 2:
         return None
     for label_name, keywords in VITAL_LABELS.items():
         for kw in keywords:
-            if kw in tl or tl in kw:
-                return label_name
+            if kw in _EXACT_MATCH_KEYWORDS:
+                # Short/ambiguous keywords: exact match only to avoid false positives
+                if tl == kw:
+                    return label_name
+            else:
+                if kw in tl or tl in kw:
+                    return label_name
     return None
 
 
@@ -241,20 +250,26 @@ def run_pipeline(monitor_path: str) -> dict:
     img_final = cv2.cvtColor(gray_enh, cv2.COLOR_GRAY2BGR)
     logger.info(f"Gamma={gamma:.1f}; mean brightness {mean_b:.0f}→{np.mean(gray_enh):.0f}.")
 
-    # ── Stage 4: Resize + Single-pass EasyOCR ────────────────────────────────
-    # Downscale to max 1000px wide — OCR text is readable at this size and it's
-    # significantly faster than running on the full camera resolution.
-    ocr_img = img_final
-    if img_final.shape[1] > 1000:
-        scale   = 1000 / img_final.shape[1]
-        ocr_img = cv2.resize(img_final, (1000, int(img_final.shape[0] * scale)),
-                             interpolation=cv2.INTER_AREA)
-        logger.info(f"Resized for OCR: {img_final.shape[1]}→1000px wide.")
+    # ── Stage 4: Resize + Dual-pass EasyOCR ──────────────────────────────────
+    # Downscale to max 1000px — sufficient for reading monitor text, faster.
+    def _resize_for_ocr(img):
+        if img.shape[1] > 1000:
+            scale = 1000 / img.shape[1]
+            return cv2.resize(img, (1000, int(img.shape[0] * scale)),
+                              interpolation=cv2.INTER_AREA)
+        return img
 
-    detections = reader.readtext(ocr_img, detail=1)
-    logger.info(f"OCR: {len(detections)} detections.")
+    # Pass 1 (deglared): colour intact → labels (SpO2, ECG, NIBP text) read better
+    # Pass 2 (enhanced): high contrast → digit values read better
+    ocr_label_img = _resize_for_ocr(img_deglared)
+    ocr_value_img = _resize_for_ocr(img_final)
 
-    img_h, img_w = ocr_img.shape[:2]
+    det_labels = reader.readtext(ocr_label_img, detail=1)
+    det_values = reader.readtext(ocr_value_img, detail=1)
+    detections  = det_labels + det_values
+    logger.info(f"OCR: {len(det_labels)} label-pass + {len(det_values)} value-pass detections.")
+
+    img_h, img_w = ocr_value_img.shape[:2]
 
     # ── Stage 5: Label-value pairing ──────────────────────────────────────────
     labels_found = []
@@ -298,32 +313,55 @@ def run_pipeline(monitor_path: str) -> dict:
     for (lname, lcenter, lconf, raw_text, lbbox) in labels_deduped:
         lx, ly = lcenter
 
+        # Small upward tolerance: if OCR places a label center slightly below
+        # its value (multi-line read), we still find the value.
+        BELOW = ly - 30
+
         if lname == "NIBP":
-            cands = [(t, c, f) for (t, c, f, b) in values_found if c[1] > ly and "/" in t]
+            # Primary: look for SYS/DIA as single "xx/xx" token
+            cands = [(t, c, f) for (t, c, f, b) in values_found if c[1] > BELOW and "/" in t]
             if cands:
                 cands.sort(key=lambda v: _dist(lcenter, v[1]))
                 best = cands[0]
                 paired["NIBP"] = {"value": best[0], "value_conf": round(best[2], 2)}
                 nibp_y = best[1][1]
+                # MAP: accept "(83)" or bare "83" that is close below the NIBP value
                 mc = [(t, c, f) for (t, c, f, b) in values_found
-                      if t.startswith("(") and t.endswith(")") and c[1] > nibp_y]
+                      if c[1] > nibp_y and _dist(best[1], c) < 200
+                      and (t.startswith("(") or t.isdigit())
+                      and t not in (best[0], paired.get("HR", {}).get("value", ""))]
                 if mc:
                     mc.sort(key=lambda v: _dist(best[1], v[1]))
-                    map_val = mc[0][0]
+                    raw_map = mc[0][0]
+                    map_val = raw_map.strip("() ")
+            else:
+                # Fallback: two separate integers near the NIBP label → "sys/dia"
+                nearby = [(t, c, f) for (t, c, f, b) in values_found
+                          if c[1] > BELOW and t.isdigit()
+                          and 40 <= int(t) <= 250
+                          and _dist(lcenter, c) < img_w * 0.35]
+                nearby.sort(key=lambda v: v[1][0])   # left → right
+                if len(nearby) >= 2:
+                    sys_v, dia_v = nearby[0], nearby[1]
+                    if int(sys_v[0]) > int(dia_v[0]):   # sanity: sys > dia
+                        paired["NIBP"] = {
+                            "value": f"{sys_v[0]}/{dia_v[0]}",
+                            "value_conf": round(min(sys_v[2], dia_v[2]), 2),
+                        }
             continue
 
         if lname == "HR":
             cands = [(t, c, f) for (t, c, f, b) in values_found
-                     if c[1] > ly and c[0] > lx + 50
+                     if c[1] > BELOW and c[0] > lx + 30
                      and "." not in t and "/" not in t and not t.startswith("(")
-                     and f >= 0.5 and t.isdigit() and 40 <= int(t) <= 200]
+                     and f >= 0.4 and t.isdigit() and 20 <= int(t) <= 300]
             if cands:
                 cands.sort(key=lambda v: _dist(lcenter, v[1]))
                 paired["HR"] = {"value": cands[0][0], "value_conf": round(cands[0][2], 2)}
             continue
 
         if lname == "Temp":
-            cands = [(t, c, f) for (t, c, f, b) in values_found if "." in t and c[1] > ly]
+            cands = [(t, c, f) for (t, c, f, b) in values_found if "." in t and c[1] > BELOW]
             if cands:
                 cands.sort(key=lambda v: _dist(lcenter, v[1]))
                 paired["Temp"] = {"value": cands[0][0], "value_conf": round(cands[0][2], 2)}
@@ -331,8 +369,8 @@ def run_pipeline(monitor_path: str) -> dict:
 
         if lname == "SpO2":
             cands = [(t, c, f) for (t, c, f, b) in values_found
-                     if c[1] > ly and "." not in t and "/" not in t
-                     and not t.startswith("(") and t.isdigit() and int(t) >= 90]
+                     if c[1] > BELOW and "." not in t and "/" not in t
+                     and not t.startswith("(") and t.isdigit() and 70 <= int(t) <= 100]
             if cands:
                 cands.sort(key=lambda v: _dist(lcenter, v[1]))
                 paired["SpO2"] = {"value": cands[0][0], "value_conf": round(cands[0][2], 2)}
@@ -343,9 +381,10 @@ def run_pipeline(monitor_path: str) -> dict:
             spo2_ctr = _spo2_center(paired, values_found)
             if spo2_ctr:
                 cands = [(t, c, f) for (t, c, f, b) in values_found
-                         if c[0] > spo2_ctr[0] and abs(c[1] - spo2_ctr[1]) < 150
+                         if c[0] > spo2_ctr[0] - 20 and abs(c[1] - spo2_ctr[1]) < 200
                          and "." not in t and "/" not in t and not t.startswith("(")
-                         and t.isdigit() and 20 < int(t) <= 200 and t != nibp_sys]
+                         and t.isdigit() and 20 < int(t) <= 250 and t != nibp_sys
+                         and t != paired.get("SpO2", {}).get("value", "")]
             else:
                 cands = []
             if cands:
@@ -356,8 +395,8 @@ def run_pipeline(monitor_path: str) -> dict:
         # Default: Resp
         nibp_sys = _nibp_systolic(paired)
         cands = [(t, c, f) for (t, c, f, b) in values_found
-                 if c[1] > ly and "." not in t and "/" not in t
-                 and not t.startswith("(") and t.isdigit() and int(t) > 10
+                 if c[1] > BELOW and "." not in t and "/" not in t
+                 and not t.startswith("(") and t.isdigit() and 4 <= int(t) <= 60
                  and t != nibp_sys]
         if cands:
             cands.sort(key=lambda v: _dist(lcenter, v[1]))
@@ -372,7 +411,7 @@ def run_pipeline(monitor_path: str) -> dict:
 
     if "SpO2" not in paired:
         fc = [(t, c, f) for (t, c, f, b) in values_found
-              if t.isdigit() and int(t) >= 90 and c[0] > img_w * 0.55]
+              if t.isdigit() and 70 <= int(t) <= 100 and c[0] > img_w * 0.50]
         if fc:
             fc.sort(key=lambda v: v[2], reverse=True)
             paired["SpO2"] = {"value": fc[0][0], "value_conf": round(fc[0][2], 2)}
@@ -392,9 +431,9 @@ def run_pipeline(monitor_path: str) -> dict:
 
     if "HR" not in paired:
         fc = [(t, c, f) for (t, c, f, b) in values_found
-              if t.isdigit() and 40 <= int(t) <= 200
-              and c[1] < img_h * 0.35 and c[0] > img_w * 0.60
-              and f >= 0.5
+              if t.isdigit() and 20 <= int(t) <= 300
+              and c[1] < img_h * 0.40 and c[0] > img_w * 0.55
+              and f >= 0.4
               and t not in [paired.get("SpO2", {}).get("value", ""),
                             paired.get("PR",   {}).get("value", "")]]
         if fc:
@@ -403,11 +442,12 @@ def run_pipeline(monitor_path: str) -> dict:
 
     if "Resp" not in paired:
         fc = [(t, c, f) for (t, c, f, b) in values_found
-              if t.isdigit() and 8 <= int(t) <= 40
-              and img_h * 0.35 < c[1] < img_h * 0.75 and c[0] > img_w * 0.55
+              if t.isdigit() and 4 <= int(t) <= 60
+              and img_h * 0.30 < c[1] < img_h * 0.80 and c[0] > img_w * 0.50
               and t not in [paired.get("HR",   {}).get("value", ""),
                             paired.get("SpO2", {}).get("value", ""),
-                            paired.get("PR",   {}).get("value", "")]]
+                            paired.get("PR",   {}).get("value", ""),
+                            _nibp_systolic(paired)]]
         if fc:
             fc.sort(key=lambda v: v[2], reverse=True)
             paired["Resp"] = {"value": fc[0][0], "value_conf": round(fc[0][2], 2)}
