@@ -58,7 +58,7 @@ logger.info("EasyOCR reader ready.")
 
 VITAL_LABELS = {
     "HR"  : ["ecg", "hr", "heart"],
-    "SpO2": ["spo2", "spoz", "spo", "oxygen"],
+    "SpO2": ["spo2", "spoz", "spo", "sp02", "sp0", "oxygen"],  # sp02/sp0: OCR 0↔O confusion
     "PR"  : ["pr"],
     "Resp": ["resp", "rosp", "rsp"],
     "NIBP": ["nibp"],
@@ -241,11 +241,20 @@ def run_pipeline(monitor_path: str) -> dict:
     img_final = cv2.cvtColor(gray_enh, cv2.COLOR_GRAY2BGR)
     logger.info(f"Gamma={gamma:.1f}; mean brightness {mean_b:.0f}→{np.mean(gray_enh):.0f}.")
 
-    # ── Stage 4: Single-pass EasyOCR ──────────────────────────────────────────
-    detections = reader.readtext(img_final, detail=1)
+    # ── Stage 4: Resize + Single-pass EasyOCR ────────────────────────────────
+    # Downscale to max 1000px wide — OCR text is readable at this size and it's
+    # significantly faster than running on the full camera resolution.
+    ocr_img = img_final
+    if img_final.shape[1] > 1000:
+        scale   = 1000 / img_final.shape[1]
+        ocr_img = cv2.resize(img_final, (1000, int(img_final.shape[0] * scale)),
+                             interpolation=cv2.INTER_AREA)
+        logger.info(f"Resized for OCR: {img_final.shape[1]}→1000px wide.")
+
+    detections = reader.readtext(ocr_img, detail=1)
     logger.info(f"OCR: {len(detections)} detections.")
 
-    img_h, img_w = img_final.shape[:2]
+    img_h, img_w = ocr_img.shape[:2]
 
     # ── Stage 5: Label-value pairing ──────────────────────────────────────────
     labels_found = []
