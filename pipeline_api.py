@@ -141,6 +141,35 @@ def _spo2_center(paired, values):
     return None
 
 
+# ── Waveform masking ──────────────────────────────────────────────────────────
+
+def _mask_waveforms(img: np.ndarray) -> np.ndarray:
+    """
+    Blacks out the oscillating ECG/Pleth/Resp waveform lines in the LEFT 60%
+    of the image using HSV saturation.  The right 40% (where all vital values
+    and labels live) is left untouched.
+
+    Benefit: removes hundreds of false text-detection candidates → OCR runs
+    significantly faster AND picks up fewer spurious numbers.
+    """
+    h, w = img.shape[:2]
+    hsv  = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+
+    # Highly saturated, non-dark pixels → coloured waveform lines
+    wave_mask = ((hsv[:, :, 1] > 140) & (hsv[:, :, 2] > 80)).astype(np.uint8) * 255
+
+    # Only apply in the left 60 % — vital values on the right stay intact
+    wave_mask[:, int(w * 0.60):] = 0
+
+    kernel    = np.ones((9, 9), np.uint8)
+    wave_mask = cv2.dilate(wave_mask, kernel, iterations=2)
+
+    result              = img.copy()
+    result[wave_mask > 0] = 0
+    logger.info(f"Waveform mask: {np.count_nonzero(wave_mask) // 255} px blacked out.")
+    return result
+
+
 # ── Stage 1 (new): Reference-free deskew via screen contour detection ─────────
 
 def _deskew(img: np.ndarray) -> np.ndarray:
@@ -250,26 +279,23 @@ def run_pipeline(monitor_path: str) -> dict:
     img_final = cv2.cvtColor(gray_enh, cv2.COLOR_GRAY2BGR)
     logger.info(f"Gamma={gamma:.1f}; mean brightness {mean_b:.0f}→{np.mean(gray_enh):.0f}.")
 
-    # ── Stage 4: Resize + Dual-pass EasyOCR ──────────────────────────────────
-    # Downscale to max 1000px — sufficient for reading monitor text, faster.
-    def _resize_for_ocr(img):
-        if img.shape[1] > 1000:
-            scale = 1000 / img.shape[1]
-            return cv2.resize(img, (1000, int(img.shape[0] * scale)),
-                              interpolation=cv2.INTER_AREA)
-        return img
+    # ── Stage 4: Waveform masking + Single-pass EasyOCR ──────────────────────
+    # Mask waveforms FIRST so OCR doesn't waste time on them, then resize.
+    # Single pass is enough because the clean masked image has far less noise.
+    img_masked = _mask_waveforms(img_final)
 
-    # Pass 1 (deglared): colour intact → labels (SpO2, ECG, NIBP text) read better
-    # Pass 2 (enhanced): high contrast → digit values read better
-    ocr_label_img = _resize_for_ocr(img_deglared)
-    ocr_value_img = _resize_for_ocr(img_final)
+    if img_masked.shape[1] > 900:
+        scale      = 900 / img_masked.shape[1]
+        ocr_img    = cv2.resize(img_masked, (900, int(img_masked.shape[0] * scale)),
+                                interpolation=cv2.INTER_AREA)
+        logger.info(f"Resized for OCR: {img_masked.shape[1]}→900px wide.")
+    else:
+        ocr_img = img_masked
 
-    det_labels = reader.readtext(ocr_label_img, detail=1)
-    det_values = reader.readtext(ocr_value_img, detail=1)
-    detections  = det_labels + det_values
-    logger.info(f"OCR: {len(det_labels)} label-pass + {len(det_values)} value-pass detections.")
+    detections = reader.readtext(ocr_img, detail=1)
+    logger.info(f"OCR: {len(detections)} detections (single-pass, waveform-masked).")
 
-    img_h, img_w = ocr_value_img.shape[:2]
+    img_h, img_w = ocr_img.shape[:2]
 
     # ── Stage 5: Label-value pairing ──────────────────────────────────────────
     labels_found = []
@@ -377,14 +403,16 @@ def run_pipeline(monitor_path: str) -> dict:
             continue
 
         if lname == "PR":
-            nibp_sys = _nibp_systolic(paired)
-            spo2_ctr = _spo2_center(paired, values_found)
+            nibp_sys  = _nibp_systolic(paired)
+            spo2_ctr  = _spo2_center(paired, values_found)
+            hr_val    = paired.get("HR",   {}).get("value", "")
+            spo2_val  = paired.get("SpO2", {}).get("value", "")
             if spo2_ctr:
                 cands = [(t, c, f) for (t, c, f, b) in values_found
                          if c[0] > spo2_ctr[0] - 20 and abs(c[1] - spo2_ctr[1]) < 200
                          and "." not in t and "/" not in t and not t.startswith("(")
-                         and t.isdigit() and 20 < int(t) <= 250 and t != nibp_sys
-                         and t != paired.get("SpO2", {}).get("value", "")]
+                         and t.isdigit() and 20 < int(t) <= 250
+                         and t not in (nibp_sys, spo2_val, hr_val)]
             else:
                 cands = []
             if cands:
@@ -419,12 +447,14 @@ def run_pipeline(monitor_path: str) -> dict:
     if "PR" not in paired and "SpO2" in paired:
         nibp_sys = _nibp_systolic(paired)
         spo2_ctr = _spo2_center(paired, values_found)
+        hr_val   = paired.get("HR",   {}).get("value", "")
+        spo2_val = paired.get("SpO2", {}).get("value", "")
         if spo2_ctr:
             fc = [(t, c, f) for (t, c, f, b) in values_found
-                  if c[0] > spo2_ctr[0] and abs(c[1] - spo2_ctr[1]) < 150
+                  if c[0] > spo2_ctr[0] and abs(c[1] - spo2_ctr[1]) < 200
                   and "." not in t and "/" not in t and not t.startswith("(")
-                  and t != paired.get("SpO2", {}).get("value", "")
-                  and t.isdigit() and 20 < int(t) <= 200 and t != nibp_sys]
+                  and t.isdigit() and 20 < int(t) <= 250
+                  and t not in (nibp_sys, spo2_val, hr_val)]
             if fc:
                 fc.sort(key=lambda v: _dist(spo2_ctr, v[1]))
                 paired["PR"] = {"value": fc[0][0], "value_conf": round(fc[0][2], 2)}
