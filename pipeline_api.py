@@ -280,14 +280,16 @@ def run_pipeline(monitor_path: str) -> dict:
     logger.info(f"Gamma={gamma:.1f}; mean brightness {mean_b:.0f}→{np.mean(gray_enh):.0f}.")
 
     # ── Stage 4: Waveform masking + Single-pass EasyOCR ──────────────────────
-    # Mask waveforms FIRST so OCR doesn't waste time on them, then resize.
-    # Single pass is enough because the clean masked image has far less noise.
-    img_masked = _mask_waveforms(img_final)
+    # Mask is derived from the DEGLARED COLOR image — img_final is grayscale
+    # so HSV saturation is zero there and masking would do nothing on it.
+    # Using the color image preserves cyan/yellow label text (SpO2, Resp, etc.)
+    # while still removing the bright colored waveform lines.
+    img_masked = _mask_waveforms(img_deglared)
 
     if img_masked.shape[1] > 900:
-        scale      = 900 / img_masked.shape[1]
-        ocr_img    = cv2.resize(img_masked, (900, int(img_masked.shape[0] * scale)),
-                                interpolation=cv2.INTER_AREA)
+        scale   = 900 / img_masked.shape[1]
+        ocr_img = cv2.resize(img_masked, (900, int(img_masked.shape[0] * scale)),
+                             interpolation=cv2.INTER_AREA)
         logger.info(f"Resized for OCR: {img_masked.shape[1]}→900px wide.")
     else:
         ocr_img = img_masked
