@@ -336,6 +336,7 @@ def run_pipeline(monitor_path: str) -> dict:
     # ── Stage 5: Label-value pairing ──────────────────────────────────────────
     labels_found = []
     values_found = []
+    paren_values = []   # parenthesized readings (e.g. "(83)") at lower conf threshold
 
     for (bbox, text, conf) in detections:
         center  = _get_center(bbox)
@@ -345,6 +346,11 @@ def run_pipeline(monitor_path: str) -> dict:
             labels_found.append((lbl, center, conf, cleaned, bbox))
         elif _is_value(cleaned) and conf > 0.25:
             values_found.append((cleaned, center, conf, bbox))
+        # Collect parenthesized values at lower confidence — monitors show MAP as "(83)"
+        # which can be low-confidence due to small font.
+        if (cleaned.startswith("(") and cleaned.endswith(")")
+                and len(cleaned) >= 3 and conf > 0.10):
+            paren_values.append((cleaned, center, conf, bbox))
 
     # Deduplicate labels
     seen_lbl = {}
@@ -385,17 +391,24 @@ def run_pipeline(monitor_path: str) -> dict:
             if cands:
                 cands.sort(key=lambda v: _dist(lcenter, v[1]))
                 best = cands[0]
-                paired["NIBP"] = {"value": best[0], "value_conf": round(best[2], 2)}
+                paired["NIBP"] = {"value": best[0], "value_conf": round(best[2], 2),
+                                  "value_center": best[1]}
                 nibp_y = best[1][1]
-                # MAP: accept "(83)" or bare "83" that is close below the NIBP value
-                mc = [(t, c, f) for (t, c, f, b) in values_found
-                      if c[1] > nibp_y and _dist(best[1], c) < 200
-                      and (t.startswith("(") or t.isdigit())
-                      and t not in (best[0], paired.get("HR", {}).get("value", ""))]
-                if mc:
-                    mc.sort(key=lambda v: _dist(best[1], v[1]))
-                    raw_map = mc[0][0]
-                    map_val = raw_map.strip("() ")
+                # MAP: prefer parenthesized "(83)" from paren_values (lower conf threshold)
+                # then fall back to bare digit — monitors always show MAP in parens.
+                pm = [(t, c, f) for (t, c, f, b) in paren_values
+                      if c[1] > nibp_y and _dist(best[1], c) < 200]
+                if pm:
+                    pm.sort(key=lambda v: _dist(best[1], v[1]))
+                    map_val = pm[0][0].strip("() ")
+                else:
+                    mc = [(t, c, f) for (t, c, f, b) in values_found
+                          if c[1] > nibp_y and _dist(best[1], c) < 120
+                          and t.isdigit() and 40 <= int(t) <= 130
+                          and t not in (best[0], paired.get("HR", {}).get("value", ""))]
+                    if mc:
+                        mc.sort(key=lambda v: _dist(best[1], v[1]))
+                        map_val = mc[0][0]
             else:
                 # Fallback: two separate integers near the NIBP label → "sys/dia"
                 nearby = [(t, c, f) for (t, c, f, b) in values_found
@@ -492,12 +505,15 @@ def run_pipeline(monitor_path: str) -> dict:
                             "value_center": fc[0][1]}
 
     if "SpO2" not in paired:
-        # SpO2 is always left of PR on screen (x < ~75%).
-        # Sort by x ascending so the leftmost candidate wins when confidence ties.
+        # SpO2 is always left of PR and in the upper portion of the screen.
+        # Exclude candidates near the NIBP value to avoid alarm-limit numbers
+        # (e.g. "100" on the NIBP bar) being mistaken for SpO2.
+        nibp_vc = paired.get("NIBP", {}).get("value_center")
         fc = [(t, c, f) for (t, c, f, b) in values_found
               if t.isdigit() and 70 <= int(t) <= 100
-              and img_w * 0.50 < c[0] < img_w * 0.75
-              and c[1] > img_h * 0.30]
+              and img_w * 0.50 < c[0] < img_w * 0.80
+              and img_h * 0.15 < c[1] < img_h * 0.65   # SpO2 is in upper 65% of screen
+              and (nibp_vc is None or _dist(c, nibp_vc) > img_w * 0.15)]
         if fc:
             fc.sort(key=lambda v: (-v[2], v[1][0]))  # highest conf first, then leftmost
             paired["SpO2"] = {"value": fc[0][0], "value_conf": round(fc[0][2], 2),
@@ -551,22 +567,27 @@ def run_pipeline(monitor_path: str) -> dict:
             # Prefer the rightmost (main reading, not the small history list)
             valid_nibp.sort(key=lambda v: v[1][0], reverse=True)
             best = valid_nibp[0]
-            paired["NIBP"] = {"value": best[0], "value_conf": round(best[2], 2)}
-            # Try to find MAP near it
+            paired["NIBP"] = {"value": best[0], "value_conf": round(best[2], 2),
+                              "value_center": best[1]}
+            # Try to find MAP near it — prefer parenthesized value
             nibp_pos = best[1]
-            mc = [(t, c, f) for (t, c, f, b) in values_found
-                  if _dist(nibp_pos, c) < img_w * 0.20
-                  and (t.startswith("(") or (t.isdigit() and 40 <= int(t) <= 130))
-                  and t != best[0]]
-            if mc:
-                mc.sort(key=lambda v: _dist(nibp_pos, v[1]))
-                map_val = mc[0][0]
+            pm = [(t, c, f) for (t, c, f) in paren_values
+                  if _dist(nibp_pos, c) < img_w * 0.20]
+            if pm:
+                pm.sort(key=lambda v: _dist(nibp_pos, v[1]))
+                map_val = pm[0][0]
+            else:
+                mc = [(t, c, f) for (t, c, f, b) in values_found
+                      if _dist(nibp_pos, c) < img_w * 0.15
+                      and t.isdigit() and 40 <= int(t) <= 130
+                      and t != best[0]]
+                if mc:
+                    mc.sort(key=lambda v: _dist(nibp_pos, v[1]))
+                    map_val = mc[0][0]
 
-    if not map_val:
-        mc = [(t, c, f) for (t, c, f, b) in values_found if t.startswith("(") and t.endswith(")")]
-        if mc:
-            mc.sort(key=lambda v: v[2], reverse=True)
-            map_val = mc[0][0]
+    if not map_val and paren_values:
+        mc = sorted(paren_values, key=lambda v: v[2], reverse=True)
+        map_val = mc[0][0]
 
     # MAP bare-integer fallback: if still no MAP but NIBP found, look for a
     # plausible MAP integer (mean ≈ dia + 1/3 pulse pressure) near the NIBP value
@@ -577,10 +598,9 @@ def run_pipeline(monitor_path: str) -> dict:
                 s, d      = int(nibp_parts[0]), int(nibp_parts[1])
                 map_est   = round((s + 2 * d) / 3)   # standard MAP formula
                 lo, hi    = map_est - 10, map_est + 10
-                nibp_ctr = next(
-                    (c for (t, c, f, b) in values_found if t == paired["NIBP"]["value"]),
-                    None,
-                )
+                nibp_ctr = (paired["NIBP"].get("value_center") or
+                            next((c for (t, c, f, b) in values_found
+                                  if t == paired["NIBP"]["value"]), None))
                 if nibp_ctr:
                     mc = [(t, c, f) for (t, c, f, b) in values_found
                           if t.isdigit() and lo <= int(t) <= hi
@@ -590,6 +610,30 @@ def run_pipeline(monitor_path: str) -> dict:
                         map_val = mc[0][0]
             except ValueError:
                 pass
+
+    # ── NIBP-MAP cross-validation: correct common OCR digit errors ──────────────
+    # If MAP was detected (from parentheses, highly reliable) but the NIBP formula
+    # MAP ≠ detected MAP, try swapping single-digit OCR confusions in diastolic.
+    if "NIBP" in paired and map_val:
+        parts = paired["NIBP"]["value"].split("/")
+        try:
+            s, d  = int(parts[0]), int(parts[1])
+            map_v = int(map_val.strip("() "))
+            if abs(round((s + 2 * d) / 3) - map_v) > 8:
+                for old, new in [("8", "7"), ("9", "4"), ("6", "0"), ("8", "3")]:
+                    d_str = str(d)
+                    if old in d_str:
+                        d_try = int(d_str.replace(old, new, 1))
+                        if 30 <= d_try <= 130 and d_try < s:
+                            if abs(round((s + 2 * d_try) / 3) - map_v) <= 5:
+                                logger.info(
+                                    f"NIBP diastolic corrected {d}→{d_try} "
+                                    f"(MAP cross-check: {map_v})"
+                                )
+                                paired["NIBP"]["value"] = f"{s}/{d_try}"
+                                break
+        except (ValueError, IndexError, ZeroDivisionError):
+            pass
 
     result = {
         "HR"  : paired.get("HR",   {}).get("value", ""),
