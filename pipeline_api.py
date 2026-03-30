@@ -1,8 +1,15 @@
 """
 pipeline_api.py — Flask bridge between Monixor 2.0 UI and the vision pipeline.
+Branch: dev/different-method
+
+Key differences from main:
+  - No reference image required (reference-free, generalizable to any monitor)
+  - Deskew via contour/edge-based monitor screen detection instead of SIFT+FLANN
+  - Single-pass OCR instead of dual-pass (faster)
+  - Auto GPU detection for EasyOCR
 
 Install dependencies:
-    pip install flask flask-cors opencv-python easyocr numpy
+    pip install flask flask-cors opencv-python easyocr numpy torch
 
 Run:
     python pipeline_api.py
@@ -23,6 +30,12 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import easyocr
 
+try:
+    import torch
+    _GPU = torch.cuda.is_available()
+except ImportError:
+    _GPU = False
+
 # ── App setup ──────────────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
@@ -31,18 +44,17 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-CORS(app)  # Allow requests from the HTML file (file:// or any origin)
+CORS(app)
 
 TEMP_DIR = "temp"
 os.makedirs(TEMP_DIR, exist_ok=True)
 
-# EasyOCR reader — initialised once at startup (heavy; takes ~30 s first run)
-logger.info("Initialising EasyOCR reader (this may take a moment)…")
-reader = easyocr.Reader(["en"], gpu=False)
+logger.info(f"Initialising EasyOCR reader (gpu={_GPU})…")
+reader = easyocr.Reader(["en"], gpu=_GPU)
 logger.info("EasyOCR reader ready.")
 
 
-# ── Pipeline helpers (ported from Pipeline.ipynb, Colab calls stripped) ───────
+# ── Pipeline helpers ───────────────────────────────────────────────────────────
 
 VITAL_LABELS = {
     "HR"  : ["ecg", "hr", "heart"],
@@ -120,61 +132,86 @@ def _spo2_center(paired, values):
     return None
 
 
+# ── Stage 1 (new): Reference-free deskew via screen contour detection ─────────
+
+def _deskew(img: np.ndarray) -> np.ndarray:
+    """
+    Attempts to find the monitor screen as the largest rectangular contour and
+    perform a perspective warp to a canonical upright view.
+
+    Works on any monitor model — no reference image needed.
+    Falls back to the original image if no clear rectangle is found.
+    """
+    h, w = img.shape[:2]
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+    # Blur + edge detect
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+    edges   = cv2.Canny(blurred, 30, 100)
+    edges   = cv2.dilate(edges, np.ones((3, 3), np.uint8), iterations=1)
+
+    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours = sorted(contours, key=cv2.contourArea, reverse=True)
+
+    screen_corners = None
+    for cnt in contours[:10]:
+        area = cv2.contourArea(cnt)
+        if area < (h * w * 0.10):   # must cover at least 10% of image area
+            break
+        peri  = cv2.arcLength(cnt, True)
+        approx = cv2.approxPolyDP(cnt, 0.02 * peri, True)
+        if len(approx) == 4:
+            screen_corners = approx.reshape(4, 2).astype(np.float32)
+            break
+
+    if screen_corners is None:
+        logger.info("Deskew: no clear rectangle found — using original image.")
+        return img
+
+    # Order corners: top-left, top-right, bottom-right, bottom-left
+    rect = np.zeros((4, 2), dtype=np.float32)
+    s    = screen_corners.sum(axis=1)
+    diff = np.diff(screen_corners, axis=1)
+    rect[0] = screen_corners[np.argmin(s)]    # top-left
+    rect[2] = screen_corners[np.argmax(s)]    # bottom-right
+    rect[1] = screen_corners[np.argmin(diff)] # top-right
+    rect[3] = screen_corners[np.argmax(diff)] # bottom-left
+
+    # Output size: use the bounding box of the detected screen
+    width  = int(max(_dist(rect[0], rect[1]), _dist(rect[2], rect[3])))
+    height = int(max(_dist(rect[0], rect[3]), _dist(rect[1], rect[2])))
+
+    if width < 100 or height < 100:
+        logger.info("Deskew: detected rect too small — using original image.")
+        return img
+
+    dst = np.array([[0, 0], [width - 1, 0],
+                    [width - 1, height - 1], [0, height - 1]], dtype=np.float32)
+    M   = cv2.getPerspectiveTransform(rect, dst)
+    warped = cv2.warpPerspective(img, M, (width, height))
+    logger.info(f"Deskew: screen detected, warped to {width}×{height}.")
+    return warped
+
+
 # ── Main pipeline function ─────────────────────────────────────────────────────
 
-def run_pipeline(monitor_path: str, reference_path: str) -> dict:
+def run_pipeline(monitor_path: str) -> dict:
     """
-    Full pipeline: geometry correction → de-glare → gamma/CLAHE → dual-pass OCR
-    → label-value pairing.  Returns a dict with keys: HR, SpO2, NIBP, MAP, RR, Temp.
+    Reference-free pipeline:
+      1. Contour-based deskew
+      2. De-glare (Telea inpainting)
+      3. Gamma correction + CLAHE
+      4. Single-pass EasyOCR
+      5. Label-value pairing
+    Returns a dict with keys: HR, SpO2, NIBP, MAP, RR, Temp.
     """
 
-    # ── Stage 1: Geometry Correction (SIFT + FLANN + RANSAC) ──────────────────
-    img_tilted    = cv2.imread(monitor_path)
-    img_reference = cv2.imread(reference_path)
+    img = cv2.imread(monitor_path)
+    if img is None:
+        raise ValueError("Could not read image file.")
 
-    if img_tilted is None or img_reference is None:
-        raise ValueError("Could not read one or both image files.")
-
-    target_h, target_w = img_reference.shape[:2]
-    if img_tilted.shape[:2] != (target_h, target_w):
-        img_tilted = cv2.resize(img_tilted, (target_w, target_h))
-
-    gray_t = cv2.cvtColor(img_tilted,    cv2.COLOR_BGR2GRAY)
-    gray_r = cv2.cvtColor(img_reference, cv2.COLOR_BGR2GRAY)
-
-    clahe_init = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    gray_t = clahe_init.apply(gray_t)
-    gray_r = clahe_init.apply(gray_r)
-
-    sift = cv2.SIFT_create(nfeatures=1500)
-    kp_t, desc_t = sift.detectAndCompute(gray_t, None)
-    kp_r, desc_r = sift.detectAndCompute(gray_r, None)
-
-    img_straightened = img_tilted.copy()   # fallback if matching fails
-
-    if desc_t is not None and desc_r is not None and len(kp_t) >= 4 and len(kp_r) >= 4:
-        FLANN_INDEX_KDTREE = 1
-        matcher = cv2.FlannBasedMatcher(
-            dict(algorithm=FLANN_INDEX_KDTREE, trees=5),
-            dict(checks=50),
-        )
-        raw = matcher.knnMatch(desc_t, desc_r, k=2)
-        good = [m for pair in raw if len(pair) == 2 for m, n in [pair] if m.distance < 0.75 * n.distance]
-        good = sorted(good, key=lambda x: x.distance)[:100]
-
-        if len(good) >= 4:
-            src_pts = np.float32([kp_t[m.queryIdx].pt for m in good]).reshape(-1, 1, 2)
-            dst_pts = np.float32([kp_r[m.trainIdx].pt for m in good]).reshape(-1, 1, 2)
-            H, _ = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
-            if H is not None:
-                img_straightened = cv2.warpPerspective(img_tilted, H, (target_w, target_h))
-                logger.info("Geometry correction applied (SIFT+FLANN+RANSAC).")
-            else:
-                logger.warning("Homography returned None — skipping geometry correction.")
-        else:
-            logger.warning(f"Only {len(good)} good matches — skipping geometry correction.")
-    else:
-        logger.warning("Insufficient descriptors — skipping geometry correction.")
+    # ── Stage 1: Deskew ───────────────────────────────────────────────────────
+    img_straightened = _deskew(img)
 
     # ── Stage 2: De-Glare (Telea inpainting) ──────────────────────────────────
     gray_c     = cv2.cvtColor(img_straightened, cv2.COLOR_BGR2GRAY)
@@ -191,30 +228,26 @@ def run_pipeline(monitor_path: str, reference_path: str) -> dict:
         logger.info(f"De-glare skipped ({glare_pct:.1f}% glare — below threshold).")
 
     # ── Stage 3: Gamma Correction + CLAHE ─────────────────────────────────────
-    gray_dg  = cv2.cvtColor(img_deglared, cv2.COLOR_BGR2GRAY)
-    mean_b   = np.mean(gray_dg)
+    gray_dg = cv2.cvtColor(img_deglared, cv2.COLOR_BGR2GRAY)
+    mean_b  = np.mean(gray_dg)
 
-    gamma    = 1.5 if mean_b < 100 else (0.7 if mean_b > 150 else 1.0)
-    lut      = np.array([((i / 255.0) ** (1.0 / gamma)) * 255 for i in range(256)]).astype("uint8")
-    img_gam  = cv2.LUT(img_deglared, lut)
+    gamma   = 1.5 if mean_b < 100 else (0.7 if mean_b > 150 else 1.0)
+    lut     = np.array([((i / 255.0) ** (1.0 / gamma)) * 255 for i in range(256)]).astype("uint8")
+    img_gam = cv2.LUT(img_deglared, lut)
 
-    gray_gam = cv2.cvtColor(img_gam, cv2.COLOR_BGR2GRAY)
-    clahe_f  = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
-    gray_enh = clahe_f.apply(gray_gam)
+    gray_gam  = cv2.cvtColor(img_gam, cv2.COLOR_BGR2GRAY)
+    clahe_f   = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+    gray_enh  = clahe_f.apply(gray_gam)
     img_final = cv2.cvtColor(gray_enh, cv2.COLOR_GRAY2BGR)
-    logger.info(f"Gamma={gamma:.1f} applied; mean brightness {mean_b:.0f}→{np.mean(gray_enh):.0f}.")
+    logger.info(f"Gamma={gamma:.1f}; mean brightness {mean_b:.0f}→{np.mean(gray_enh):.0f}.")
 
-    # ── OCR: Dual-pass EasyOCR ────────────────────────────────────────────────
-    # Pass 1 (labels): less-processed image preserves label text
-    # Pass 2 (values): fully-enhanced image improves digit recognition
-    det_labels = reader.readtext(img_deglared, detail=1)
-    det_values = reader.readtext(img_final,    detail=1)
-    detections = det_labels + det_values
-    logger.info(f"OCR: {len(det_labels)} label-pass + {len(det_values)} value-pass detections.")
+    # ── Stage 4: Single-pass EasyOCR ──────────────────────────────────────────
+    detections = reader.readtext(img_final, detail=1)
+    logger.info(f"OCR: {len(detections)} detections.")
 
     img_h, img_w = img_final.shape[:2]
 
-    # ── Label-value pairing (Cell 19 logic) ───────────────────────────────────
+    # ── Stage 5: Label-value pairing ──────────────────────────────────────────
     labels_found = []
     values_found = []
 
@@ -227,7 +260,7 @@ def run_pipeline(monitor_path: str, reference_path: str) -> dict:
         elif _is_value(cleaned) and conf > 0.25:
             values_found.append((cleaned, center, conf, bbox))
 
-    # Deduplicate labels (keep highest-confidence per vital name)
+    # Deduplicate labels
     seen_lbl = {}
     for item in labels_found:
         n = item[0]
@@ -235,7 +268,7 @@ def run_pipeline(monitor_path: str, reference_path: str) -> dict:
             seen_lbl[n] = item
     labels_deduped = list(seen_lbl.values())
 
-    # Deduplicate values (same text + similar position → keep best)
+    # Deduplicate values
     seen_val = {}
     for (vtext, vcenter, vconf, vbbox) in values_found:
         key = (vtext, round(vcenter[0] / 20) * 20, round(vcenter[1] / 20) * 20)
@@ -297,8 +330,8 @@ def run_pipeline(monitor_path: str, reference_path: str) -> dict:
             continue
 
         if lname == "PR":
-            nibp_sys   = _nibp_systolic(paired)
-            spo2_ctr   = _spo2_center(paired, values_found)
+            nibp_sys = _nibp_systolic(paired)
+            spo2_ctr = _spo2_center(paired, values_found)
             if spo2_ctr:
                 cands = [(t, c, f) for (t, c, f, b) in values_found
                          if c[0] > spo2_ctr[0] and abs(c[1] - spo2_ctr[1]) < 150
@@ -321,7 +354,7 @@ def run_pipeline(monitor_path: str, reference_path: str) -> dict:
             cands.sort(key=lambda v: _dist(lcenter, v[1]))
             paired[lname] = {"value": cands[0][0], "value_conf": round(cands[0][2], 2)}
 
-    # ── Fallbacks (Cell 19 fallback block) ────────────────────────────────────
+    # ── Fallbacks ──────────────────────────────────────────────────────────────
     if "Temp" not in paired:
         fc = [(t, c, f) for (t, c, f, b) in values_found if "." in t and "/" not in t]
         if fc:
@@ -336,8 +369,8 @@ def run_pipeline(monitor_path: str, reference_path: str) -> dict:
             paired["SpO2"] = {"value": fc[0][0], "value_conf": round(fc[0][2], 2)}
 
     if "PR" not in paired and "SpO2" in paired:
-        nibp_sys  = _nibp_systolic(paired)
-        spo2_ctr  = _spo2_center(paired, values_found)
+        nibp_sys = _nibp_systolic(paired)
+        spo2_ctr = _spo2_center(paired, values_found)
         if spo2_ctr:
             fc = [(t, c, f) for (t, c, f, b) in values_found
                   if c[0] > spo2_ctr[0] and abs(c[1] - spo2_ctr[1]) < 150
@@ -376,7 +409,6 @@ def run_pipeline(monitor_path: str, reference_path: str) -> dict:
             mc.sort(key=lambda v: v[2], reverse=True)
             map_val = mc[0][0]
 
-    # ── Build response (map pipeline names → UI field names) ──────────────────
     result = {
         "HR"  : paired.get("HR",   {}).get("value", ""),
         "SpO2": paired.get("SpO2", {}).get("value", ""),
@@ -393,7 +425,6 @@ def run_pipeline(monitor_path: str, reference_path: str) -> dict:
 
 @app.route("/health", methods=["GET"])
 def health():
-    """Quick health check — useful to confirm the server is up."""
     return jsonify({"status": "ok"})
 
 
@@ -403,33 +434,30 @@ def pipeline_endpoint():
     POST /run_pipeline
     Form-data fields:
         monitor_photo  — the uploaded monitor photo (image file)
-        reference_image — the reference (base) image for this monitor model (image file)
+        (reference_image no longer required)
     Returns JSON: { HR, SpO2, NIBP, MAP, RR, Temp }
     """
-    if "monitor_photo" not in request.files or "reference_image" not in request.files:
-        return jsonify({"error": "Both 'monitor_photo' and 'reference_image' files are required."}), 400
+    if "monitor_photo" not in request.files:
+        return jsonify({"error": "'monitor_photo' file is required."}), 400
 
-    uid            = uuid.uuid4().hex[:8]
-    monitor_path   = os.path.join(TEMP_DIR, f"monitor_{uid}.jpg")
-    reference_path = os.path.join(TEMP_DIR, f"reference_{uid}.jpg")
+    uid          = uuid.uuid4().hex[:8]
+    monitor_path = os.path.join(TEMP_DIR, f"monitor_{uid}.jpg")
 
     request.files["monitor_photo"].save(monitor_path)
-    request.files["reference_image"].save(reference_path)
-    logger.info(f"[{uid}] Images saved — starting pipeline…")
+    logger.info(f"[{uid}] Image saved — starting pipeline…")
 
     try:
-        result = run_pipeline(monitor_path, reference_path)
+        result = run_pipeline(monitor_path)
         return jsonify(result)
     except Exception as exc:
         logger.error(f"[{uid}] Pipeline error: {exc}", exc_info=True)
         return jsonify({"error": str(exc)}), 500
     finally:
-        for path in (monitor_path, reference_path):
-            try:
-                os.remove(path)
-            except OSError:
-                pass
-        logger.info(f"[{uid}] Temp files cleaned up.")
+        try:
+            os.remove(monitor_path)
+        except OSError:
+            pass
+        logger.info(f"[{uid}] Temp file cleaned up.")
 
 
 # ── Entry point ────────────────────────────────────────────────────────────────
