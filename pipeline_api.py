@@ -58,7 +58,7 @@ logger.info("EasyOCR reader ready.")
 # ── Pipeline helpers ───────────────────────────────────────────────────────────
 
 VITAL_LABELS = {
-    "HR"  : ["ecg", "hr", "heart"],
+    "HR"  : ["ecg", "hr", "heart", "eco", "ecd", "ecq"],
     "SpO2": ["spo2", "spoz", "spo", "sp02", "sp0", "sp0z", "oxygen"],
     "PR"  : ["pr"],
     "Resp": ["resp", "rosp", "rsp", "resp.", "rr"],
@@ -72,11 +72,13 @@ IGNORE_PHRASES = [
     "manual", "standby", "review",
     # alarm banner variants (e.g. "** NIBP-Mean Too Low")
     "nibp-mean", "nibp mean", "mean too", "- mean",
+    # bottom button bar labels that contain vital-sign keywords
+    "measure", "setup", "zero ibp", "zero bp",
 ]
 
 # Short keywords that must match exactly (not as substrings) to avoid false positives
 # e.g. "pr" should not match "pressure", "spo" should not match random noise
-_EXACT_MATCH_KEYWORDS = {"hr", "pr", "rr", "spo", "sp0", "rsp", "tmp", "tc", "t1"}
+_EXACT_MATCH_KEYWORDS = {"hr", "pr", "rr", "spo", "sp0", "rsp", "tmp", "tc", "t1", "eco", "ecd", "ecq"}
 
 
 def _get_center(bbox):
@@ -89,9 +91,21 @@ def _dist(p1, p2):
     return math.sqrt((p1[0] - p2[0]) ** 2 + (p1[1] - p2[1]) ** 2)
 
 
+def _bbox_area(bbox):
+    """Return the pixel area of an EasyOCR bounding box (list of 4 [x,y] corners)."""
+    xs = [p[0] for p in bbox]
+    ys = [p[1] for p in bbox]
+    return (max(xs) - min(xs)) * (max(ys) - min(ys))
+
+
 def _clean_text(text):
     text = re.sub(r"^[^a-zA-Z0-9(]+", "", text.strip())
     text = re.sub(r"^[a-zA-Z](\d)", r"\1", text)
+    # If a pure numeric/fraction token is followed by whitespace + noise
+    # (e.g. OCR merges "100" and "77" into "100 kn"), strip the trailing noise.
+    m = re.match(r"^([\d./()]+)\s+\S", text)
+    if m:
+        text = m.group(1)
     return text
 
 
@@ -100,6 +114,12 @@ def _should_ignore(text):
     for phrase in IGNORE_PHRASES:
         if phrase in tl:
             return True
+    # Multi-word tokens containing vital keywords are annotation text, not primary labels.
+    # e.g. "Source SpO2", "Souce Spo2" (OCR misread) — not the actual SpO2 label.
+    if " " in tl.strip():
+        for keywords in VITAL_LABELS.values():
+            if any(kw in tl for kw in keywords if len(kw) >= 3):
+                return True
     return len(text.strip()) > 15
 
 
@@ -177,30 +197,30 @@ def _spo2_center(paired, values):
 
 # ── Waveform masking ──────────────────────────────────────────────────────────
 
+def _compute_wave_mask(color_img: np.ndarray) -> np.ndarray:
+    """
+    Returns a binary mask (uint8, same H×W) where waveform pixels = 255.
+    Derived from the color image's HSV saturation; only covers the left 60%.
+    """
+    h, w = color_img.shape[:2]
+    hsv  = cv2.cvtColor(color_img, cv2.COLOR_BGR2HSV)
+    mask = ((hsv[:, :, 1] > 140) & (hsv[:, :, 2] > 80)).astype(np.uint8) * 255
+    kernel = np.ones((9, 9), np.uint8)
+    mask   = cv2.dilate(mask, kernel, iterations=2)
+    mask[:, int(w * 0.60):] = 0
+    return mask
+
+
 def _mask_waveforms(img: np.ndarray) -> np.ndarray:
     """
     Blacks out the oscillating ECG/Pleth/Resp waveform lines in the LEFT 60%
     of the image using HSV saturation.  The right 40% (where all vital values
     and labels live) is left untouched.
-
-    Benefit: removes hundreds of false text-detection candidates → OCR runs
-    significantly faster AND picks up fewer spurious numbers.
     """
-    h, w = img.shape[:2]
-    hsv  = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-
-    # Highly saturated, non-dark pixels → coloured waveform lines
-    wave_mask = ((hsv[:, :, 1] > 140) & (hsv[:, :, 2] > 80)).astype(np.uint8) * 255
-
-    # Only apply in the left 60 % — vital values on the right stay intact.
-    # Zero AFTER dilation so dilated edges don't bleed into the right side.
-    kernel    = np.ones((9, 9), np.uint8)
-    wave_mask = cv2.dilate(wave_mask, kernel, iterations=2)
-    wave_mask[:, int(w * 0.60):] = 0
-
-    result              = img.copy()
-    result[wave_mask > 0] = 0
-    logger.info(f"Waveform mask: {np.count_nonzero(wave_mask) // 255} px blacked out.")
+    mask   = _compute_wave_mask(img)
+    result = img.copy()
+    result[mask > 0] = 0
+    logger.info(f"Waveform mask: {np.count_nonzero(mask) // 255} px blacked out.")
     return result
 
 
@@ -313,33 +333,42 @@ def run_pipeline(monitor_path: str) -> dict:
     img_final = cv2.cvtColor(gray_enh, cv2.COLOR_GRAY2BGR)
     logger.info(f"Gamma={gamma:.1f}; mean brightness {mean_b:.0f}→{np.mean(gray_enh):.0f}.")
 
-    # ── Stage 4: Waveform masking + Single-pass EasyOCR ──────────────────────
-    # Mask is derived from the DEGLARED COLOR image — img_final is grayscale
-    # so HSV saturation is zero there and masking would do nothing on it.
-    # Using the color image preserves cyan/yellow label text (SpO2, Resp, etc.)
-    # while still removing the bright colored waveform lines.
-    img_masked = _mask_waveforms(img_deglared)
+    # ── Stage 4: Waveform masking + Dual-pass EasyOCR ────────────────────────
+    # Waveform mask (from color image) is applied to both passes so ECG/Pleth
+    # lines don't generate false OCR detections.
+    # Pass 1 (color image)  → preserves colored label text (SpO2, Resp, etc.)
+    # Pass 2 (CLAHE image)  → boosts contrast for small values like (83), PR 77
+    wm             = _compute_wave_mask(img_deglared)
+    ocr_color      = img_deglared.copy();  ocr_color[wm > 0] = 0
+    ocr_clahe      = img_final.copy();     ocr_clahe[wm > 0] = 0
 
-    if img_masked.shape[1] > 900:
-        scale   = 900 / img_masked.shape[1]
-        ocr_img = cv2.resize(img_masked, (900, int(img_masked.shape[0] * scale)),
-                             interpolation=cv2.INTER_AREA)
-        logger.info(f"Resized for OCR: {img_masked.shape[1]}→900px wide.")
-    else:
-        ocr_img = img_masked
+    # No resize — small text like "(83)" and PR value become too small at 900px.
+    # Run OCR at full deskewed resolution (same as main branch behaviour).
 
-    detections = reader.readtext(ocr_img, detail=1)
-    logger.info(f"OCR: {len(detections)} detections (single-pass, waveform-masked).")
+    det_labels = reader.readtext(ocr_color, detail=1)
+    det_values = reader.readtext(ocr_clahe, detail=1)
+    detections = det_labels + det_values
+    logger.info(f"OCR: {len(det_labels)} (color) + {len(det_values)} (CLAHE) detections.")
 
-    img_h, img_w = ocr_img.shape[:2]
+    img_h, img_w = ocr_color.shape[:2]
 
     # ── Stage 5: Label-value pairing ──────────────────────────────────────────
     labels_found = []
     values_found = []
     paren_values = []   # parenthesized readings (e.g. "(83)") at lower conf threshold
 
+    # Find the y-position of "BeneView T8" or equivalent external hardware text
+    # so we can exclude any detections below it (they are outside the monitor screen).
+    external_y = img_h  # default: no external hardware detected
+    for (bbox, text, conf) in detections:
+        if "beneview" in text.lower() or "bene view" in text.lower():
+            external_y = min(external_y, _get_center(bbox)[1])
+            logger.info(f"External hardware text detected at y={external_y:.0f} — values below excluded.")
+
     for (bbox, text, conf) in detections:
         center  = _get_center(bbox)
+        if center[1] >= external_y:
+            continue   # below external hardware boundary
         cleaned = _clean_text(text)
         lbl     = _identify_label(cleaned)
         if lbl and conf > 0.10:
@@ -402,10 +431,13 @@ def run_pipeline(monitor_path: str) -> dict:
                     pm.sort(key=lambda v: _dist(best[1], v[1]))
                     map_val = pm[0][0].strip("() ")
                 else:
+                    _nibp_sys_str = best[0].split("/")[0]
                     mc = [(t, c, f) for (t, c, f, b) in values_found
                           if c[1] > nibp_y and _dist(best[1], c) < 120
                           and t.isdigit() and 40 <= int(t) <= 130
-                          and t not in (best[0], paired.get("HR", {}).get("value", ""))]
+                          and t not in (best[0], paired.get("HR", {}).get("value", ""),
+                                        paired.get("SpO2", {}).get("value", ""))
+                          and int(t) < int(_nibp_sys_str)]
                     if mc:
                         mc.sort(key=lambda v: _dist(best[1], v[1]))
                         map_val = mc[0][0]
@@ -426,14 +458,19 @@ def run_pipeline(monitor_path: str) -> dict:
             continue
 
         if lname == "HR":
-            cands = [(t, c, f) for (t, c, f, b) in values_found
-                     if c[1] > BELOW and c[0] > lx + 30
+            cands = [(t, c, f, b) for (t, c, f, b) in values_found
+                     if c[1] > ly + img_h * 0.04 and c[0] > lx + 30
                      and "." not in t and "/" not in t and not t.startswith("(")
                      and f >= 0.25 and t.isdigit() and 20 <= int(t) <= 300]
             if cands:
-                cands.sort(key=lambda v: _dist(lcenter, v[1]))
-                paired["HR"] = {"value": cands[0][0], "value_conf": round(cands[0][2], 2),
-                                "value_center": cands[0][1]}
+                # Drop scale markers (small font) by keeping only candidates whose
+                # bbox area is at least 25% of the largest detected bbox.
+                # Then y-ascending: ECG is always the topmost channel.
+                max_area = max(_bbox_area(v[3]) for v in cands)
+                large    = [v for v in cands if _bbox_area(v[3]) >= max_area * 0.25]
+                best     = sorted(large or cands, key=lambda v: v[1][1])[0]
+                paired["HR"] = {"value": best[0], "value_conf": round(best[2], 2),
+                                "value_center": best[1]}
             continue
 
         if lname == "Temp":
@@ -444,11 +481,14 @@ def run_pipeline(monitor_path: str) -> dict:
             continue
 
         if lname == "SpO2":
-            cands = [(t, c, f) for (t, c, f, b) in values_found
+            _hr_vc = paired.get("HR", {}).get("value_center")
+            cands = [(t, c, f, b) for (t, c, f, b) in values_found
                      if c[1] > BELOW and "." not in t and "/" not in t
-                     and not t.startswith("(") and t.isdigit() and 70 <= int(t) <= 100]
+                     and not t.startswith("(") and t.isdigit() and 70 <= int(t) <= 100
+                     and (_hr_vc is None or _dist(c, _hr_vc) > 60)]
             if cands:
-                cands.sort(key=lambda v: _dist(lcenter, v[1]))
+                # Largest bounding box = main SpO2 value; alarm limits are small text
+                cands.sort(key=lambda v: -_bbox_area(v[3]))
                 paired["SpO2"] = {"value": cands[0][0], "value_conf": round(cands[0][2], 2),
                                   "value_center": cands[0][1]}
             continue
@@ -460,7 +500,7 @@ def run_pipeline(monitor_path: str) -> dict:
             hr_c      = paired.get("HR",   {}).get("value_center")
             if spo2_ctr:
                 cands = [(t, c, f) for (t, c, f, b) in values_found
-                         if c[0] > spo2_ctr[0] - 20 and abs(c[1] - spo2_ctr[1]) < 200
+                         if c[0] > spo2_ctr[0] - 20 and abs(c[1] - spo2_ctr[1]) < 100
                          and "." not in t and "/" not in t and not t.startswith("(")
                          and t.isdigit() and 20 < int(t) <= 250
                          and t != nibp_sys
@@ -469,19 +509,52 @@ def run_pipeline(monitor_path: str) -> dict:
             else:
                 cands = []
             if cands:
-                cands.sort(key=lambda v: _dist(lcenter, v[1]))
-                paired["PR"] = {"value": cands[0][0], "value_conf": round(cands[0][2], 2)}
+                # Sort by distance to SpO2 center — PR is always adjacent to SpO2.
+                # Using lcenter is unreliable because "PR" also appears as a column
+                # header in the NIBP history table (often higher OCR confidence).
+                cands.sort(key=lambda v: _dist(spo2_ctr, v[1]))
+                paired["PR"] = {"value": cands[0][0], "value_conf": round(cands[0][2], 2),
+                                "value_center": cands[0][1]}
             continue
 
         # Default: Resp
+        # Minimum y-offset skips same-row scale markers (30, 8); bbox-area picks
+        # the large display value over any small residual digit.
         nibp_sys = _nibp_systolic(paired)
-        cands = [(t, c, f) for (t, c, f, b) in values_found
-                 if c[1] > BELOW and "." not in t and "/" not in t
+        cands = [(t, c, f, b) for (t, c, f, b) in values_found
+                 if c[1] > ly + img_h * 0.03 and "." not in t and "/" not in t
                  and not t.startswith("(") and t.isdigit() and 4 <= int(t) <= 60
                  and t != nibp_sys]
         if cands:
-            cands.sort(key=lambda v: _dist(lcenter, v[1]))
-            paired[lname] = {"value": cands[0][0], "value_conf": round(cands[0][2], 2)}
+            cands.sort(key=lambda v: -_bbox_area(v[3]))
+            best_t, best_c, best_f, best_b = cands[0]
+            paired[lname] = {"value": best_t, "value_conf": round(best_f, 2)}
+            # Targeted re-OCR: upscale only the detected value's own bbox at 3×
+            # to correct single-digit misreads (e.g. "19" → "29").
+            # Cropping the label area instead would capture waveform scale markers
+            # ("30", "8") and produce wrong corrections.
+            bx1 = max(0,     int(min(p[0] for p in best_b)) - 4)
+            bx2 = min(img_w, int(max(p[0] for p in best_b)) + 4)
+            by1 = max(0,     int(min(p[1] for p in best_b)) - 4)
+            by2 = min(img_h, int(max(p[1] for p in best_b)) + 4)
+            resp_crop = img_deglared[by1:by2, bx1:bx2]
+            if resp_crop.size > 0:
+                resp_up = cv2.resize(resp_crop,
+                                     (resp_crop.shape[1] * 3, resp_crop.shape[0] * 3),
+                                     interpolation=cv2.INTER_CUBIC)
+                for (_, rr_text, rr_conf) in sorted(
+                        reader.readtext(resp_up, detail=1), key=lambda x: -x[2]):
+                    rr_cl = _clean_text(rr_text)
+                    if (rr_cl.isdigit() and 4 <= int(rr_cl) <= 60
+                            and rr_conf > 0.25 and rr_cl != nibp_sys):
+                        if rr_cl != best_t:
+                            logger.info(
+                                f"Resp re-OCR corrected: {best_t} → {rr_cl} "
+                                f"(conf={rr_conf:.2f})"
+                            )
+                            paired[lname]["value"]      = rr_cl
+                            paired[lname]["value_conf"] = round(rr_conf, 2)
+                        break
 
     # ── Fallbacks ──────────────────────────────────────────────────────────────
     if "Temp" not in paired:
@@ -493,29 +566,38 @@ def run_pipeline(monitor_path: str) -> dict:
     # HR fallback runs BEFORE SpO2 — both share the 70-100 range so HR must
     # claim its top-right value first, otherwise SpO2 fallback steals it.
     if "HR" not in paired:
-        fc = [(t, c, f) for (t, c, f, b) in values_found
+        _spo2_vc = paired.get("SpO2", {}).get("value_center")
+        _pr_vc   = paired.get("PR",   {}).get("value_center")
+        fc = [(t, c, f, b) for (t, c, f, b) in values_found
               if t.isdigit() and 20 <= int(t) <= 300
               and c[1] < img_h * 0.40 and c[0] > img_w * 0.55
               and f >= 0.25
-              and t not in [paired.get("SpO2", {}).get("value", ""),
-                            paired.get("PR",   {}).get("value", "")]]
+              # Exclude by position (not value string) — HR and PR can share the same number
+              and (_spo2_vc is None or _dist(c, _spo2_vc) > 60)
+              and (_pr_vc   is None or _dist(c, _pr_vc)   > 60)]
         if fc:
-            fc.sort(key=lambda v: v[2], reverse=True)
-            paired["HR"] = {"value": fc[0][0], "value_conf": round(fc[0][2], 2),
-                            "value_center": fc[0][1]}
+            # Drop scale markers (small font); among remaining large-font values,
+            # topmost y = ECG channel (always the top channel on the monitor).
+            max_area = max(_bbox_area(v[3]) for v in fc)
+            large    = [v for v in fc if _bbox_area(v[3]) >= max_area * 0.25]
+            best     = sorted(large or fc, key=lambda v: v[1][1])[0]
+            paired["HR"] = {"value": best[0], "value_conf": round(best[2], 2),
+                            "value_center": best[1]}
 
     if "SpO2" not in paired:
         # SpO2 is always left of PR and in the upper portion of the screen.
         # Exclude candidates near the NIBP value to avoid alarm-limit numbers
         # (e.g. "100" on the NIBP bar) being mistaken for SpO2.
         nibp_vc = paired.get("NIBP", {}).get("value_center")
-        fc = [(t, c, f) for (t, c, f, b) in values_found
+        hr_vc   = paired.get("HR",   {}).get("value_center")
+        fc = [(t, c, f, b) for (t, c, f, b) in values_found
               if t.isdigit() and 70 <= int(t) <= 100
               and img_w * 0.50 < c[0] < img_w * 0.80
               and img_h * 0.15 < c[1] < img_h * 0.65   # SpO2 is in upper 65% of screen
-              and (nibp_vc is None or _dist(c, nibp_vc) > img_w * 0.15)]
+              and (nibp_vc is None or _dist(c, nibp_vc) > img_w * 0.15)
+              and (hr_vc   is None or _dist(c, hr_vc)   > 60)]
         if fc:
-            fc.sort(key=lambda v: (-v[2], v[1][0]))  # highest conf first, then leftmost
+            fc.sort(key=lambda v: -_bbox_area(v[3]))  # largest bbox = main SpO2 value
             paired["SpO2"] = {"value": fc[0][0], "value_conf": round(fc[0][2], 2),
                               "value_center": fc[0][1]}
 
@@ -526,7 +608,7 @@ def run_pipeline(monitor_path: str) -> dict:
         hr_c     = paired.get("HR",   {}).get("value_center")
         if spo2_ctr:
             fc = [(t, c, f) for (t, c, f, b) in values_found
-                  if c[0] > spo2_ctr[0] and abs(c[1] - spo2_ctr[1]) < 200
+                  if c[0] > spo2_ctr[0] - 30 and abs(c[1] - spo2_ctr[1]) < 100
                   and "." not in t and "/" not in t and not t.startswith("(")
                   and t.isdigit() and 20 < int(t) <= 250
                   and t != nibp_sys
@@ -534,7 +616,35 @@ def run_pipeline(monitor_path: str) -> dict:
                   and (hr_c   is None or _dist(c, hr_c)   > 30)]
             if fc:
                 fc.sort(key=lambda v: _dist(spo2_ctr, v[1]))
-                paired["PR"] = {"value": fc[0][0], "value_conf": round(fc[0][2], 2)}
+                paired["PR"] = {"value": fc[0][0], "value_conf": round(fc[0][2], 2),
+                                "value_center": fc[0][1]}
+
+    # ── PR targeted re-OCR (SpO2 and PR often merged into one OCR token) ─────
+    # When OCR merges "100" and "77" into "100 kn", PR is unrecoverable from
+    # values_found.  Crop the area just right of the SpO2 value, upscale 3×,
+    # and re-run OCR to find PR at higher effective resolution.
+    if "PR" not in paired and "SpO2" in paired:
+        spo2_vc = paired["SpO2"].get("value_center")
+        if spo2_vc:
+            sx, sy   = int(spo2_vc[0]), int(spo2_vc[1])
+            x1 = min(img_w, sx + 10)
+            x2 = min(img_w, sx + int(img_w * 0.12))
+            y1 = max(0,     sy - int(img_h * 0.12))
+            y2 = min(img_h, sy + int(img_h * 0.10))
+            crop = img_deglared[y1:y2, x1:x2]
+            if crop.size > 0:
+                crop_up = cv2.resize(crop, (crop.shape[1] * 3, crop.shape[0] * 3),
+                                     interpolation=cv2.INTER_CUBIC)
+                # Exclude NIBP systolic only — HR can equal PR so don't exclude HR value
+                _excl = {_nibp_systolic(paired)}
+                for (_, pr_text, pr_conf) in sorted(
+                        reader.readtext(crop_up, detail=1), key=lambda x: -x[2]):
+                    pr_cl = _clean_text(pr_text)
+                    if (pr_cl.isdigit() and 20 < int(pr_cl) <= 250
+                            and pr_conf > 0.10 and pr_cl not in _excl):
+                        paired["PR"] = {"value": pr_cl, "value_conf": round(pr_conf, 2)}
+                        logger.info(f"PR from targeted re-OCR: {pr_cl} (conf={pr_conf:.2f})")
+                        break
 
     if "Resp" not in paired:
         fc = [(t, c, f) for (t, c, f, b) in values_found
@@ -571,7 +681,7 @@ def run_pipeline(monitor_path: str) -> dict:
                               "value_center": best[1]}
             # Try to find MAP near it — prefer parenthesized value
             nibp_pos = best[1]
-            pm = [(t, c, f) for (t, c, f) in paren_values
+            pm = [(t, c, f) for (t, c, f, b) in paren_values
                   if _dist(nibp_pos, c) < img_w * 0.20]
             if pm:
                 pm.sort(key=lambda v: _dist(nibp_pos, v[1]))
@@ -604,7 +714,8 @@ def run_pipeline(monitor_path: str) -> dict:
                 if nibp_ctr:
                     mc = [(t, c, f) for (t, c, f, b) in values_found
                           if t.isdigit() and lo <= int(t) <= hi
-                          and _dist(nibp_ctr, c) < img_w * 0.25]
+                          and _dist(nibp_ctr, c) < img_w * 0.25
+                          and t != paired.get("SpO2", {}).get("value", "")]
                     if mc:
                         mc.sort(key=lambda v: _dist(nibp_ctr, v[1]))
                         map_val = mc[0][0]
@@ -619,7 +730,7 @@ def run_pipeline(monitor_path: str) -> dict:
         try:
             s, d  = int(parts[0]), int(parts[1])
             map_v = int(map_val.strip("() "))
-            if abs(round((s + 2 * d) / 3) - map_v) > 8:
+            if abs(round((s + 2 * d) / 3) - map_v) > 5:
                 for old, new in [("8", "7"), ("9", "4"), ("6", "0"), ("8", "3")]:
                     d_str = str(d)
                     if old in d_str:
@@ -634,6 +745,19 @@ def run_pipeline(monitor_path: str) -> dict:
                                 break
         except (ValueError, IndexError, ZeroDivisionError):
             pass
+
+    # ── Formula MAP last resort ────────────────────────────────────────────────
+    # If OCR never found the MAP value (no parens detected, no nearby digit),
+    # derive it from the NIBP formula so the field is never left blank.
+    if not map_val and "NIBP" in paired:
+        parts = paired["NIBP"]["value"].split("/")
+        if len(parts) == 2:
+            try:
+                s, d    = int(parts[0]), int(parts[1])
+                map_val = str(round((s + 2 * d) / 3))
+                logger.info(f"MAP derived from formula: ({s}+2×{d})/3 = {map_val}")
+            except ValueError:
+                pass
 
     result = {
         "HR"  : paired.get("HR",   {}).get("value", ""),
@@ -682,15 +806,21 @@ def debug_ocr():
         else:
             img_dg = img_straight.copy()
 
-        img_masked = _mask_waveforms(img_dg)
-        if img_masked.shape[1] > 900:
-            scale      = 900 / img_masked.shape[1]
-            ocr_img    = cv2.resize(img_masked, (900, int(img_masked.shape[0] * scale)),
-                                    interpolation=cv2.INTER_AREA)
-        else:
-            ocr_img = img_masked
+        # Same CLAHE preprocessing as run_pipeline
+        gray_dg  = cv2.cvtColor(img_dg, cv2.COLOR_BGR2GRAY)
+        mean_b   = np.mean(gray_dg)
+        gamma    = 1.5 if mean_b < 100 else (0.7 if mean_b > 150 else 1.0)
+        lut      = np.array([((i / 255.0) ** (1.0 / gamma)) * 255 for i in range(256)]).astype("uint8")
+        gray_gam = cv2.LUT(cv2.cvtColor(img_dg, cv2.COLOR_BGR2GRAY), lut)
+        clahe_f  = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+        gray_enh = clahe_f.apply(gray_gam)
+        img_enh  = cv2.cvtColor(gray_enh, cv2.COLOR_GRAY2BGR)
 
-        raw = reader.readtext(ocr_img, detail=1)
+        wm         = _compute_wave_mask(img_dg)
+        ocr_color  = img_dg.copy();   ocr_color[wm > 0] = 0
+        ocr_clahe  = img_enh.copy();  ocr_clahe[wm > 0] = 0
+
+        raw = reader.readtext(ocr_color, detail=1) + reader.readtext(ocr_clahe, detail=1)
         detections = []
         for (bbox, text, conf) in raw:
             cx = sum(pt[0] for pt in bbox) / 4
@@ -706,7 +836,7 @@ def debug_ocr():
             })
 
         return jsonify({
-            "ocr_image_size": [ocr_img.shape[1], ocr_img.shape[0]],
+            "ocr_image_size": [ocr_color.shape[1], ocr_color.shape[0]],
             "total_detections": len(detections),
             "detections": sorted(detections, key=lambda d: d["center"][1]),
         })
