@@ -520,9 +520,13 @@ def run_pipeline(monitor_path: str) -> dict:
         # Default: Resp
         # Minimum y-offset skips same-row scale markers (30, 8); bbox-area picks
         # the large display value over any small residual digit.
+        # Upper y-bound (ly + 25% of image height) prevents the physical unit's
+        # bed-number label at the very bottom (e.g. "29") from being selected
+        # when BeneView hardware detection fails to set external_y.
         nibp_sys = _nibp_systolic(paired)
         cands = [(t, c, f, b) for (t, c, f, b) in values_found
-                 if c[1] > ly + img_h * 0.03 and "." not in t and "/" not in t
+                 if c[1] > ly + img_h * 0.03 and c[1] < ly + img_h * 0.25
+                 and "." not in t and "/" not in t
                  and not t.startswith("(") and t.isdigit() and 4 <= int(t) <= 60
                  and t != nibp_sys]
         if cands:
