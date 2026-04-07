@@ -57,6 +57,18 @@ logger.info("EasyOCR reader ready.")
 
 # ── Pipeline helpers ───────────────────────────────────────────────────────────
 
+# Letters that EasyOCR commonly misreads as digits on 7-segment/LCD displays.
+# Used in _clean_text to recover numeric values like "J0" → "90", "I5" → "15".
+_DIGIT_LOOKALIKES = {
+    "J": "9", "j": "9",
+    "I": "1", "i": "1", "l": "1",
+    "O": "0", "o": "0",
+    "S": "5",
+    "Z": "2",
+    "B": "8",
+    "G": "6", "g": "9",
+}
+
 VITAL_LABELS = {
     "HR"  : ["ecg", "hr", "heart", "eco", "ecd", "ecq"],
     "SpO2": ["spo2", "spoz", "spo", "sp02", "sp0", "sp0z", "oxygen"],
@@ -100,7 +112,12 @@ def _bbox_area(bbox):
 
 def _clean_text(text):
     text = re.sub(r"^[^a-zA-Z0-9(]+", "", text.strip())
-    text = re.sub(r"^[a-zA-Z](\d)", r"\1", text)
+    # Leading letter followed by a digit: substitute known digit-lookalikes
+    # (e.g. "J0" → "90", "I5" → "15") and strip genuine noise letters.
+    m0 = re.match(r"^([a-zA-Z])(\d)", text)
+    if m0:
+        sub = _DIGIT_LOOKALIKES.get(m0.group(1))
+        text = (sub + text[1:]) if sub else text[1:]
     # If a pure numeric/fraction token is followed by whitespace + noise
     # (e.g. OCR merges "100" and "77" into "100 kn"), strip the trailing noise.
     m = re.match(r"^([\d./()]+)\s+\S", text)
@@ -382,10 +399,21 @@ def run_pipeline(monitor_path: str) -> dict:
             paren_values.append((cleaned, center, conf, bbox))
 
     # Deduplicate labels
+    # For SpO2: prefer the topmost detection (smallest y) over highest confidence.
+    # "Source SpO2" text near the PR display is also tokenised as "SpO2" by OCR
+    # and typically has higher confidence than the actual SpO2 channel label.
+    # Taking the topmost instance keeps the real label and prevents SpO2 from
+    # claiming the PR value area.
+    # All other labels: keep highest confidence as before.
     seen_lbl = {}
     for item in labels_found:
         n = item[0]
-        if n not in seen_lbl or item[2] > seen_lbl[n][2]:
+        if n not in seen_lbl:
+            seen_lbl[n] = item
+        elif n == "SpO2":
+            if item[1][1] < seen_lbl[n][1][1]:   # smaller y = higher on screen
+                seen_lbl[n] = item
+        elif item[2] > seen_lbl[n][2]:
             seen_lbl[n] = item
     labels_deduped = list(seen_lbl.values())
 
@@ -470,11 +498,20 @@ def run_pipeline(monitor_path: str) -> dict:
                 large    = [v for v in cands if _bbox_area(v[3]) >= max_area * 0.25]
                 best     = sorted(large or cands, key=lambda v: v[1][1])[0]
                 paired["HR"] = {"value": best[0], "value_conf": round(best[2], 2),
-                                "value_center": best[1]}
+                                "value_center": best[1],
+                                "bbox_area": _bbox_area(best[3])}
             continue
 
         if lname == "Temp":
             cands = [(t, c, f) for (t, c, f, b) in values_found if "." in t and c[1] > BELOW]
+            if not cands:
+                # Decimal dropped by OCR — accept integer in temp range near label.
+                # Range 21-42: excludes stray display artefacts (clocks, scale markers)
+                # that fall below 20; upper bound covers high fever.
+                rr_val = paired.get("Resp", {}).get("value", "")
+                cands = [(t, c, f) for (t, c, f, b) in values_found
+                         if t.isdigit() and 21 <= int(t) <= 42 and c[1] > BELOW
+                         and t != rr_val]
             if cands:
                 cands.sort(key=lambda v: _dist(lcenter, v[1]))
                 paired["Temp"] = {"value": cands[0][0], "value_conf": round(cands[0][2], 2)}
@@ -482,15 +519,82 @@ def run_pipeline(monitor_path: str) -> dict:
 
         if lname == "SpO2":
             _hr_vc = paired.get("HR", {}).get("value_center")
-            cands = [(t, c, f, b) for (t, c, f, b) in values_found
-                     if c[1] > BELOW and "." not in t and "/" not in t
-                     and not t.startswith("(") and t.isdigit() and 70 <= int(t) <= 100
-                     and (_hr_vc is None or _dist(c, _hr_vc) > 60)]
-            if cands:
-                # Largest bounding box = main SpO2 value; alarm limits are small text
-                cands.sort(key=lambda v: -_bbox_area(v[3]))
-                paired["SpO2"] = {"value": cands[0][0], "value_conf": round(cands[0][2], 2),
-                                  "value_center": cands[0][1]}
+            # ── Strategy: re-OCR from pre-de-glare image FIRST ──────────────
+            # De-glare erases bright green SpO2 digits (gray > 240 threshold).
+            # We re-OCR img_straightened (pre-de-glare) so those digits are
+            # still present.  SpO2 value can appear slightly left OR right of
+            # the label centre depending on camera angle; a -20%/+10% window
+            # covers both cases without reaching the HR display (further right).
+            # CLAHE is applied to the crop so overexposed near-white digits
+            # (which EasyOCR struggles to read at full brightness) get their
+            # local contrast normalised before OCR.
+            rx1 = max(0,     int(lx - img_w * 0.20))
+            rx2 = min(img_w, int(lx + img_w * 0.06))
+            ry1 = max(0,     int(ly - img_h * 0.18))
+            ry2 = min(img_h, int(ly + img_h * 0.09))
+            spo2_crop = img_straightened[ry1:ry2, rx1:rx2]
+            best_spo2 = None
+            if spo2_crop.size > 0:
+                spo2_up = cv2.resize(
+                    spo2_crop, (spo2_crop.shape[1] * 2, spo2_crop.shape[0] * 2),
+                    interpolation=cv2.INTER_CUBIC)
+                # CLAHE on grayscale: normalises local contrast so near-white
+                # overexposed text becomes legible (character edges stand out).
+                _spo2_gray = cv2.cvtColor(spo2_up, cv2.COLOR_BGR2GRAY) \
+                    if len(spo2_up.shape) == 3 else spo2_up
+                _clahe = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(4, 4))
+                spo2_up = cv2.cvtColor(_clahe.apply(_spo2_gray), cv2.COLOR_GRAY2BGR)
+                best_area = 0
+                for (rbbox, rv_text, rv_conf) in reader.readtext(spo2_up, detail=1):
+                    rv_cl = _clean_text(rv_text)
+                    if not (rv_cl.isdigit() and 70 <= int(rv_cl) <= 100):
+                        continue
+                    if rv_conf < 0.15:
+                        continue
+                    orig_cx = rx1 + sum(p[0] for p in rbbox) / (4 * 2)
+                    orig_cy = ry1 + sum(p[1] for p in rbbox) / (4 * 2)
+                    if _hr_vc and _dist((orig_cx, orig_cy), _hr_vc) <= 60:
+                        continue
+                    area = _bbox_area(rbbox)
+                    if area > best_area:
+                        best_area = area
+                        best_spo2 = (rv_cl, (orig_cx, orig_cy), rv_conf)
+            if best_spo2:
+                paired["SpO2"] = {"value": best_spo2[0],
+                                  "value_conf": round(best_spo2[2], 2),
+                                  "value_center": best_spo2[1]}
+                logger.info(f"SpO2 re-OCR (primary): {best_spo2[0]} (conf={best_spo2[2]:.2f})")
+            else:
+                # ── Fallback: use main-pass candidates ───────────────────────
+                # Re-OCR found nothing (e.g. SpO2 value is right of the label
+                # for some monitor layouts, or crop was too tight). Search
+                # values_found with spatial + size filters to reject PR.
+                _pr_lbl = next((item for item in labels_deduped if item[0] == "PR"), None)
+                _pr_lc  = _pr_lbl[1] if _pr_lbl else None
+                cands = [(t, c, f, b) for (t, c, f, b) in values_found
+                         if c[1] > BELOW and c[1] < img_h * 0.58
+                         and "." not in t and "/" not in t
+                         and not t.startswith("(") and t.isdigit() and 70 <= int(t) <= 100
+                         and (_hr_vc is None or _dist(c, _hr_vc) > 60)]
+                # Prefer candidates closer to the SpO2 label than to the PR label
+                if _pr_lc and cands:
+                    closer = [(t, c, f, b) for (t, c, f, b) in cands
+                              if _dist(c, lcenter) < _dist(c, _pr_lc)]
+                    if closer:
+                        cands = closer
+                # Prefer large-font candidates (SpO2 font ≈ HR font; PR is smaller)
+                _hr_bbox = paired.get("HR", {}).get("bbox_area", 0)
+                if _hr_bbox > 0 and cands:
+                    large = [(t, c, f, b) for (t, c, f, b) in cands
+                             if _bbox_area(b) >= _hr_bbox * 0.50]
+                    if large:
+                        cands = large
+                if cands:
+                    cands.sort(key=lambda v: -_bbox_area(v[3]))
+                    paired["SpO2"] = {"value": cands[0][0],
+                                      "value_conf": round(cands[0][2], 2),
+                                      "value_center": cands[0][1]}
+                    logger.info(f"SpO2 fallback cands: {cands[0][0]} (conf={cands[0][2]:.2f})")
             continue
 
         if lname == "PR":
@@ -520,12 +624,16 @@ def run_pipeline(monitor_path: str) -> dict:
         # Default: Resp
         # Minimum y-offset skips same-row scale markers (30, 8); bbox-area picks
         # the large display value over any small residual digit.
-        # Upper y-bound (ly + 25% of image height) prevents the physical unit's
-        # bed-number label at the very bottom (e.g. "29") from being selected
-        # when BeneView hardware detection fails to set external_y.
+        # Upper y-bound prevents the physical unit's bed-number label at the very
+        # bottom (e.g. "29") from being selected when BeneView hardware detection
+        # fails to set external_y.  0.38 keeps Down-angle images (where the value
+        # can be further below the label) while still excluding the bed number
+        # which is typically at y > 90% of image height.
+        # Also restrict to x > 40% — Resp value is always in the right portion.
         nibp_sys = _nibp_systolic(paired)
         cands = [(t, c, f, b) for (t, c, f, b) in values_found
-                 if c[1] > ly + img_h * 0.03 and c[1] < ly + img_h * 0.25
+                 if c[1] > ly + img_h * 0.03 and c[1] < ly + img_h * 0.38
+                 and c[0] > img_w * 0.40
                  and "." not in t and "/" not in t
                  and not t.startswith("(") and t.isdigit() and 4 <= int(t) <= 60
                  and t != nibp_sys]
@@ -566,6 +674,49 @@ def run_pipeline(monitor_path: str) -> dict:
         if fc:
             fc.sort(key=lambda v: v[2], reverse=True)
             paired["Temp"] = {"value": fc[0][0], "value_conf": round(fc[0][2], 2)}
+        else:
+            # OCR sometimes drops the decimal point (e.g. "23.0" → "23").
+            used = {paired.get(k, {}).get("value", "")
+                    for k in ("HR", "SpO2", "PR", "Resp")}
+            tc = [(t, c, f) for (t, c, f, b) in values_found
+                  if t.isdigit() and 21 <= int(t) <= 42
+                  and c[0] > img_w * 0.50 and c[1] > img_h * 0.55
+                  and t not in used]
+            if tc:
+                tc.sort(key=lambda v: v[2], reverse=True)
+                paired["Temp"] = {"value": tc[0][0], "value_conf": round(tc[0][2], 2)}
+
+    if "Temp" not in paired:
+        # Last resort: re-OCR the lower-right quadrant where Temp always lives.
+        # Uses the pre-deglare image — de-glare can erase bright decimal text.
+        tx1 = int(img_w * 0.52)
+        ty1 = int(img_h * 0.58)
+        temp_crop = img_straightened[ty1:, tx1:]
+        if temp_crop.size > 0:
+            temp_up = cv2.resize(temp_crop,
+                                 (temp_crop.shape[1] * 2, temp_crop.shape[0] * 2),
+                                 interpolation=cv2.INTER_CUBIC)
+            _used = {paired.get(k, {}).get("value", "")
+                     for k in ("HR", "SpO2", "PR", "Resp")}
+            for (_, tv_text, tv_conf) in sorted(
+                    reader.readtext(temp_up, detail=1), key=lambda x: -x[2]):
+                tv_cl = _clean_text(tv_text)
+                if tv_conf < 0.15:
+                    continue
+                # Prefer decimal reading; fall back to integer in temp range
+                is_decimal = ("." in tv_cl and "/" not in tv_cl
+                              and any(c.isdigit() for c in tv_cl))
+                is_int = tv_cl.isdigit() and 21 <= int(tv_cl) <= 42 and tv_cl not in _used
+                if is_decimal or is_int:
+                    try:
+                        val = float(tv_cl.replace(",", "."))
+                        if 15.0 <= val <= 45.0:
+                            paired["Temp"] = {"value": tv_cl,
+                                              "value_conf": round(tv_conf, 2)}
+                            logger.info(f"Temp re-OCR: {tv_cl} (conf={tv_conf:.2f})")
+                            break
+                    except ValueError:
+                        pass
 
     # HR fallback runs BEFORE SpO2 — both share the 70-100 range so HR must
     # claim its top-right value first, otherwise SpO2 fallback steals it.
@@ -573,7 +724,7 @@ def run_pipeline(monitor_path: str) -> dict:
         _spo2_vc = paired.get("SpO2", {}).get("value_center")
         _pr_vc   = paired.get("PR",   {}).get("value_center")
         fc = [(t, c, f, b) for (t, c, f, b) in values_found
-              if t.isdigit() and 20 <= int(t) <= 300
+              if t.isdigit() and 40 <= int(t) <= 300
               and c[1] < img_h * 0.40 and c[0] > img_w * 0.55
               and f >= 0.25
               # Exclude by position (not value string) — HR and PR can share the same number
@@ -588,22 +739,110 @@ def run_pipeline(monitor_path: str) -> dict:
             paired["HR"] = {"value": best[0], "value_conf": round(best[2], 2),
                             "value_center": best[1]}
 
+    # HR re-OCR: values_found had no HR candidate (e.g. bright green digits not
+    # detected in main pass).  Crop the top-right quadrant where ECG/HR is always
+    # displayed, upscale 2× with CLAHE to boost contrast for bright-on-dark text,
+    # then pick the largest-font integer in the valid HR range.
+    if "HR" not in paired:
+        hx1 = int(img_w * 0.45)
+        hy2 = int(img_h * 0.35)
+        hr_crop = img_straightened[0:hy2, hx1:]
+        if hr_crop.size > 0:
+            hr_up = cv2.resize(hr_crop,
+                               (hr_crop.shape[1] * 2, hr_crop.shape[0] * 2),
+                               interpolation=cv2.INTER_CUBIC)
+            _hr_gray  = cv2.cvtColor(hr_up, cv2.COLOR_BGR2GRAY) \
+                        if len(hr_up.shape) == 3 else hr_up
+            _hr_clahe = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(4, 4))
+            hr_up     = cv2.cvtColor(_hr_clahe.apply(_hr_gray), cv2.COLOR_GRAY2BGR)
+            _spo2_vc  = paired.get("SpO2", {}).get("value_center")
+            best_hr   = None
+            best_area = 0
+            for (rbbox, rv_text, rv_conf) in reader.readtext(hr_up, detail=1):
+                rv_cl = _clean_text(rv_text)
+                if not (rv_cl.isdigit() and 20 <= int(rv_cl) <= 300):
+                    continue
+                if rv_conf < 0.20:
+                    continue
+                orig_cx = hx1 + sum(p[0] for p in rbbox) / (4 * 2)
+                orig_cy = sum(p[1] for p in rbbox) / (4 * 2)
+                if _spo2_vc and _dist((orig_cx, orig_cy), _spo2_vc) <= 60:
+                    continue
+                area = _bbox_area(rbbox)
+                if area > best_area:
+                    best_area = area
+                    best_hr   = (rv_cl, (orig_cx, orig_cy), rv_conf)
+            if best_hr:
+                paired["HR"] = {"value": best_hr[0], "value_conf": round(best_hr[2], 2),
+                                "value_center": best_hr[1], "bbox_area": best_area}
+                logger.info(f"HR re-OCR (top-right crop): {best_hr[0]} (conf={best_hr[2]:.2f})")
+
     if "SpO2" not in paired:
-        # SpO2 is always left of PR and in the upper portion of the screen.
-        # Exclude candidates near the NIBP value to avoid alarm-limit numbers
-        # (e.g. "100" on the NIBP bar) being mistaken for SpO2.
-        nibp_vc = paired.get("NIBP", {}).get("value_center")
-        hr_vc   = paired.get("HR",   {}).get("value_center")
+        # Fallback: SpO2 label was not detected or label path found no candidates.
+        # Strategy 1 (primary): targeted re-OCR of the middle-right region where SpO2
+        # is always displayed.  Uses color image + CLAHE to recover near-white /
+        # overexposed "100" digits that the main OCR pass may have missed.
+        # Pick largest-font candidate — SpO2 font ≫ PR font in this region.
+        hr_vc  = paired.get("HR", {}).get("value_center")
+        sx1    = int(img_w * 0.55)
+        sx2    = min(img_w, int(img_w * 0.92))
+        sy1    = int(img_h * 0.20)
+        sy2    = int(img_h * 0.58)
+        spo2_crop2 = img_straightened[sy1:sy2, sx1:sx2]
+        if spo2_crop2.size > 0:
+            spo2_up2  = cv2.resize(spo2_crop2,
+                                   (spo2_crop2.shape[1] * 2, spo2_crop2.shape[0] * 2),
+                                   interpolation=cv2.INTER_CUBIC)
+            _sg       = cv2.cvtColor(spo2_up2, cv2.COLOR_BGR2GRAY) \
+                        if len(spo2_up2.shape) == 3 else spo2_up2
+            _sc       = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(4, 4))
+            spo2_up2  = cv2.cvtColor(_sc.apply(_sg), cv2.COLOR_GRAY2BGR)
+            best_s2   = None
+            best_area = 0
+            for (rbbox, rv_text, rv_conf) in reader.readtext(spo2_up2, detail=1):
+                rv_cl = _clean_text(rv_text)
+                if not (rv_cl.isdigit() and 70 <= int(rv_cl) <= 100):
+                    continue
+                if rv_conf < 0.15:
+                    continue
+                orig_cx = sx1 + sum(p[0] for p in rbbox) / (4 * 2)
+                orig_cy = sy1 + sum(p[1] for p in rbbox) / (4 * 2)
+                if hr_vc and _dist((orig_cx, orig_cy), hr_vc) <= 60:
+                    continue
+                area = _bbox_area(rbbox)
+                if area > best_area:
+                    best_area = area
+                    best_s2   = (rv_cl, (orig_cx, orig_cy), rv_conf)
+            if best_s2:
+                paired["SpO2"] = {"value": best_s2[0], "value_conf": round(best_s2[2], 2),
+                                  "value_center": best_s2[1]}
+                logger.info(f"SpO2 re-OCR (positional crop): {best_s2[0]} (conf={best_s2[2]:.2f})")
+
+    if "SpO2" not in paired:
+        # Strategy 2 (fallback): search values_found in the upper-right portion.
+        # NIBP distance filter removed — the y-bound already excludes NIBP history,
+        # and the filter was accidentally rejecting SpO2=100 when it sits directly
+        # above NIBP in the same column (distance < 15% threshold).
+        hr_vc = paired.get("HR", {}).get("value_center")
         fc = [(t, c, f, b) for (t, c, f, b) in values_found
               if t.isdigit() and 70 <= int(t) <= 100
-              and img_w * 0.50 < c[0] < img_w * 0.80
-              and img_h * 0.15 < c[1] < img_h * 0.65   # SpO2 is in upper 65% of screen
-              and (nibp_vc is None or _dist(c, nibp_vc) > img_w * 0.15)
-              and (hr_vc   is None or _dist(c, hr_vc)   > 60)]
+              and img_w * 0.50 < c[0] < img_w * 0.92
+              and img_h * 0.15 < c[1] < img_h * 0.58
+              and (hr_vc is None or _dist(c, hr_vc) > 60)]
         if fc:
             fc.sort(key=lambda v: -_bbox_area(v[3]))  # largest bbox = main SpO2 value
             paired["SpO2"] = {"value": fc[0][0], "value_conf": round(fc[0][2], 2),
                               "value_center": fc[0][1]}
+            # Bonus: if a second candidate is distinctly smaller (typical PR font)
+            # and PR is not yet paired, claim it as PR simultaneously.
+            if len(fc) >= 2 and "PR" not in paired:
+                pr_c = fc[1]
+                _nibp_s = _nibp_systolic(paired)
+                if (pr_c[0].isdigit() and 20 < int(pr_c[0]) <= 250
+                        and pr_c[0] != _nibp_s
+                        and pr_c[1][0] > fc[0][1][0]):   # PR is to the RIGHT of SpO2
+                    paired["PR"] = {"value": pr_c[0], "value_conf": round(pr_c[2], 2),
+                                    "value_center": pr_c[1]}
 
     if "PR" not in paired and "SpO2" in paired:
         nibp_sys = _nibp_systolic(paired)
