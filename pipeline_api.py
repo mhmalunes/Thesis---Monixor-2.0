@@ -378,31 +378,12 @@ def run_pipeline(monitor_path: str, vital_aliases: dict = None) -> dict:
     ocr_color = img_deglared.copy();  ocr_color[wm > 0] = 0
     ocr_clahe = img_final.copy();     ocr_clahe[wm > 0] = 0
 
-    # Crop to right 60% — all vital labels/values are right of x=40% and the
-    # left portion is already blacked out by the wave mask.  Cropping reduces
-    # OCR input area by ~40%, directly cutting detection time.
-    # The crop boundary tracks the wave mask (which also covers left 40%) so
-    # this stays correct for any monitor layout where waveforms are on the left.
     img_h, img_w = ocr_color.shape[:2]
-    crop_x = int(img_w * 0.40)
-    ocr_color_crop = ocr_color[:, crop_x:]
-    ocr_clahe_crop = ocr_clahe[:, crop_x:]
 
-    # Greedy decoder is significantly faster than beam search for short
-    # alphanumeric tokens (vital labels + 2-4 digit numbers).
-    det_labels_raw = reader.readtext(ocr_color_crop, detail=1, decoder='greedy')
-    det_values_raw = reader.readtext(ocr_clahe_crop, detail=1, decoder='greedy')
-
-    # Offset bounding box x-coordinates back to full-image space
-    def _offset_bboxes(detections, dx):
-        result = []
-        for (bbox, text, conf) in detections:
-            shifted = [[p[0] + dx, p[1]] for p in bbox]
-            result.append((shifted, text, conf))
-        return result
-
-    det_labels = _offset_bboxes(det_labels_raw, crop_x)
-    det_values = _offset_bboxes(det_values_raw, crop_x)
+    # No resize of OCR input — small text like "(83)" and PR value become too
+    # small at reduced resolution.  Run at full deskewed resolution.
+    det_labels = reader.readtext(ocr_color, detail=1)
+    det_values = reader.readtext(ocr_clahe, detail=1)
     detections = det_labels + det_values
     logger.info(f"OCR: {len(det_labels)} (color) + {len(det_values)} (CLAHE) detections.")
 
@@ -709,7 +690,15 @@ def run_pipeline(monitor_path: str, vital_aliases: dict = None) -> dict:
 
     # ── Fallbacks ──────────────────────────────────────────────────────────────
     if "Temp" not in paired:
-        fc = [(t, c, f) for (t, c, f, b) in values_found if "." in t and "/" not in t]
+        fc = []
+        for (t, c, f, b) in values_found:
+            if "." in t and "/" not in t:
+                try:
+                    val = float(t.replace(",", "."))
+                    if 15.0 <= val <= 45.0:
+                        fc.append((t, c, f))
+                except ValueError:
+                    pass
         if fc:
             fc.sort(key=lambda v: v[2], reverse=True)
             paired["Temp"] = {"value": fc[0][0], "value_conf": round(fc[0][2], 2)}
