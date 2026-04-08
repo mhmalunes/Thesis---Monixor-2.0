@@ -606,7 +606,7 @@ def run_pipeline(monitor_path: str) -> dict:
                 cands = [(t, c, f) for (t, c, f, b) in values_found
                          if c[0] > spo2_ctr[0] - 20 and abs(c[1] - spo2_ctr[1]) < 100
                          and "." not in t and "/" not in t and not t.startswith("(")
-                         and t.isdigit() and 20 < int(t) <= 250
+                         and t.isdigit() and 20 < int(t) <= 250 and not t.startswith("0")
                          and t != nibp_sys
                          and (spo2_c is None or _dist(c, spo2_c) > 30)
                          and (hr_c   is None or _dist(c, hr_c)   > 30)]
@@ -635,7 +635,8 @@ def run_pipeline(monitor_path: str) -> dict:
                  if c[1] > ly + img_h * 0.03 and c[1] < ly + img_h * 0.38
                  and c[0] > img_w * 0.40
                  and "." not in t and "/" not in t
-                 and not t.startswith("(") and t.isdigit() and 4 <= int(t) <= 60
+                 and not t.startswith("(") and t.isdigit() and 4 <= int(t) <= 29
+                 and len(t) <= 2 and not t.startswith("0")
                  and t != nibp_sys]
         if cands:
             cands.sort(key=lambda v: -_bbox_area(v[3]))
@@ -657,7 +658,8 @@ def run_pipeline(monitor_path: str) -> dict:
                 for (_, rr_text, rr_conf) in sorted(
                         reader.readtext(resp_up, detail=1), key=lambda x: -x[2]):
                     rr_cl = _clean_text(rr_text)
-                    if (rr_cl.isdigit() and 4 <= int(rr_cl) <= 60
+                    if (rr_cl.isdigit() and 4 <= int(rr_cl) <= 29
+                            and len(rr_cl) <= 2 and not rr_cl.startswith("0")
                             and rr_conf > 0.25 and rr_cl != nibp_sys):
                         if rr_cl != best_t:
                             logger.info(
@@ -890,15 +892,18 @@ def run_pipeline(monitor_path: str) -> dict:
                         break
 
     if "Resp" not in paired:
-        fc = [(t, c, f) for (t, c, f, b) in values_found
-              if t.isdigit() and 4 <= int(t) <= 60
-              and img_h * 0.30 < c[1] < img_h * 0.80 and c[0] > img_w * 0.50
+        fc = [(t, c, f, b) for (t, c, f, b) in values_found
+              if t.isdigit() and 4 <= int(t) <= 29
+              and len(t) <= 2 and not t.startswith("0")
+              and img_h * 0.15 < c[1] < img_h * 0.80 and c[0] > img_w * 0.50
               and t not in [paired.get("HR",   {}).get("value", ""),
                             paired.get("SpO2", {}).get("value", ""),
                             paired.get("PR",   {}).get("value", ""),
                             _nibp_systolic(paired)]]
         if fc:
-            fc.sort(key=lambda v: v[2], reverse=True)
+            # Sort by bbox area descending — actual display digits are larger than
+            # waveform scale markers, so the largest bbox is the most likely RR value.
+            fc.sort(key=lambda v: -_bbox_area(v[3]))
             paired["Resp"] = {"value": fc[0][0], "value_conf": round(fc[0][2], 2)}
 
     # ── NIBP standalone fallback (runs when NIBP label was never detected) ────
