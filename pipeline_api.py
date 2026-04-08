@@ -327,6 +327,17 @@ def run_pipeline(monitor_path: str, vital_aliases: dict = None) -> dict:
     if img is None:
         raise ValueError("Could not read image file.")
 
+    # ── Stage 0: Resize to ≤1920px wide ──────────────────────────────────────
+    # Phones shoot at 4K (3840×2160) or higher.  OCR time scales with pixel
+    # count — 4K images take ~4× longer than 1080p with no accuracy benefit
+    # because monitor text is already large at 1920px.  Hard cap at 1920px.
+    MAX_W = 1920
+    h0, w0 = img.shape[:2]
+    if w0 > MAX_W:
+        scale = MAX_W / w0
+        img   = cv2.resize(img, (MAX_W, int(h0 * scale)), interpolation=cv2.INTER_AREA)
+        logger.info(f"Resized {w0}×{h0} → {img.shape[1]}×{img.shape[0]}")
+
     # ── Stage 1: Deskew ───────────────────────────────────────────────────────
     img_straightened = _deskew(img)
 
@@ -363,19 +374,37 @@ def run_pipeline(monitor_path: str, vital_aliases: dict = None) -> dict:
     # lines don't generate false OCR detections.
     # Pass 1 (color image)  → preserves colored label text (SpO2, Resp, etc.)
     # Pass 2 (CLAHE image)  → boosts contrast for small values like (83), PR 77
-    wm             = _compute_wave_mask(img_deglared)
-    ocr_color      = img_deglared.copy();  ocr_color[wm > 0] = 0
-    ocr_clahe      = img_final.copy();     ocr_clahe[wm > 0] = 0
+    wm        = _compute_wave_mask(img_deglared)
+    ocr_color = img_deglared.copy();  ocr_color[wm > 0] = 0
+    ocr_clahe = img_final.copy();     ocr_clahe[wm > 0] = 0
 
-    # No resize — small text like "(83)" and PR value become too small at 900px.
-    # Run OCR at full deskewed resolution (same as main branch behaviour).
+    # Crop to right 60% — all vital labels/values are right of x=40% and the
+    # left portion is already blacked out by the wave mask.  Cropping reduces
+    # OCR input area by ~40%, directly cutting detection time.
+    # The crop boundary tracks the wave mask (which also covers left 40%) so
+    # this stays correct for any monitor layout where waveforms are on the left.
+    img_h, img_w = ocr_color.shape[:2]
+    crop_x = int(img_w * 0.40)
+    ocr_color_crop = ocr_color[:, crop_x:]
+    ocr_clahe_crop = ocr_clahe[:, crop_x:]
 
-    det_labels = reader.readtext(ocr_color, detail=1)
-    det_values = reader.readtext(ocr_clahe, detail=1)
+    # Greedy decoder is significantly faster than beam search for short
+    # alphanumeric tokens (vital labels + 2-4 digit numbers).
+    det_labels_raw = reader.readtext(ocr_color_crop, detail=1, decoder='greedy')
+    det_values_raw = reader.readtext(ocr_clahe_crop, detail=1, decoder='greedy')
+
+    # Offset bounding box x-coordinates back to full-image space
+    def _offset_bboxes(detections, dx):
+        result = []
+        for (bbox, text, conf) in detections:
+            shifted = [[p[0] + dx, p[1]] for p in bbox]
+            result.append((shifted, text, conf))
+        return result
+
+    det_labels = _offset_bboxes(det_labels_raw, crop_x)
+    det_values = _offset_bboxes(det_values_raw, crop_x)
     detections = det_labels + det_values
     logger.info(f"OCR: {len(det_labels)} (color) + {len(det_values)} (CLAHE) detections.")
-
-    img_h, img_w = ocr_color.shape[:2]
 
     # ── Stage 5: Label-value pairing ──────────────────────────────────────────
     labels_found = []
