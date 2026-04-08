@@ -126,7 +126,8 @@ def _clean_text(text):
     return text
 
 
-def _should_ignore(text):
+def _should_ignore(text, vital_labels=None):
+    vital_labels = vital_labels or VITAL_LABELS
     tl = text.lower()
     for phrase in IGNORE_PHRASES:
         if phrase in tl:
@@ -134,7 +135,7 @@ def _should_ignore(text):
     # Multi-word tokens containing vital keywords are annotation text, not primary labels.
     # e.g. "Source SpO2", "Souce Spo2" (OCR misread) — not the actual SpO2 label.
     if " " in tl.strip():
-        for keywords in VITAL_LABELS.values():
+        for keywords in vital_labels.values():
             if any(kw in tl for kw in keywords if len(kw) >= 3):
                 return True
     return len(text.strip()) > 15
@@ -153,20 +154,21 @@ def _fuzzy_score(a: str, b: str) -> float:
     return SequenceMatcher(None, a, b).ratio()
 
 
-def _identify_label(text):
+def _identify_label(text, vital_labels=None):
     """
     Match OCR text to a vital-sign label using both exact/substring rules
     and fuzzy similarity.  Fuzzy matching catches OCR misreads like
     'Sp0z'→SpO2, 'N1BP'→NIBP, 'Reap'→Resp without hardcoding positions.
     """
-    if _should_ignore(text):
+    vital_labels = vital_labels or VITAL_LABELS
+    if _should_ignore(text, vital_labels):
         return None
     tl = text.lower().strip().rstrip(".:,")
     if len(tl) < 2:
         return None
 
     # ── Pass 1: exact / substring rules ──────────────────────────────────────
-    for label_name, keywords in VITAL_LABELS.items():
+    for label_name, keywords in vital_labels.items():
         for kw in keywords:
             if kw in _EXACT_MATCH_KEYWORDS:
                 if tl == kw:
@@ -180,7 +182,7 @@ def _identify_label(text):
     # longer strings that happen to be similar to a keyword.
     if len(tl) <= 8:
         best_label, best_score = None, 0.0
-        for label_name, keywords in VITAL_LABELS.items():
+        for label_name, keywords in vital_labels.items():
             for kw in keywords:
                 score = _fuzzy_score(tl, kw)
                 if score > best_score:
@@ -304,7 +306,7 @@ def _deskew(img: np.ndarray) -> np.ndarray:
 
 # ── Main pipeline function ─────────────────────────────────────────────────────
 
-def run_pipeline(monitor_path: str) -> dict:
+def run_pipeline(monitor_path: str, vital_aliases: dict = None) -> dict:
     """
     Reference-free pipeline:
       1. Contour-based deskew
@@ -313,7 +315,13 @@ def run_pipeline(monitor_path: str) -> dict:
       4. Single-pass EasyOCR
       5. Label-value pairing
     Returns a dict with keys: HR, SpO2, NIBP, MAP, RR, Temp.
+
+    vital_aliases: optional dict mapping vital names to label alias lists.
+      Keys must match VITAL_LABELS keys (HR, SpO2, PR, Resp, NIBP, Temp).
+      Provided aliases are merged with defaults so unspecified vitals still work.
+      Example: {"HR": ["ecg", "heart rate"], "Resp": ["rr", "resp", "breathing"]}
     """
+    effective_labels = {**VITAL_LABELS, **(vital_aliases or {})}
 
     img = cv2.imread(monitor_path)
     if img is None:
@@ -387,7 +395,7 @@ def run_pipeline(monitor_path: str) -> dict:
         if center[1] >= external_y:
             continue   # below external hardware boundary
         cleaned = _clean_text(text)
-        lbl     = _identify_label(cleaned)
+        lbl     = _identify_label(cleaned, effective_labels)
         if lbl and conf > 0.10:
             labels_found.append((lbl, center, conf, cleaned, bbox))
         elif _is_value(cleaned) and conf > 0.25:
@@ -1104,7 +1112,8 @@ def pipeline_endpoint():
     POST /run_pipeline
     Form-data fields:
         monitor_photo  — the uploaded monitor photo (image file)
-        (reference_image no longer required)
+        vital_aliases  — optional JSON string mapping vital names to alias lists.
+                         e.g. {"HR": ["ecg", "heart rate"], "Resp": ["rr", "resp"]}
     Returns JSON: { HR, SpO2, NIBP, MAP, RR, Temp }
     """
     if "monitor_photo" not in request.files:
@@ -1113,11 +1122,29 @@ def pipeline_endpoint():
     uid          = uuid.uuid4().hex[:8]
     monitor_path = os.path.join(TEMP_DIR, f"monitor_{uid}.jpg")
 
+    vital_aliases = None
+    if "vital_aliases" in request.form:
+        try:
+            import json as _json
+            vital_aliases = _json.loads(request.form["vital_aliases"])
+        except Exception:
+            return jsonify({"error": "'vital_aliases' must be a valid JSON string."}), 400
+    else:
+        # Auto-load saved config from the app settings screen if it exists
+        _config_path = os.path.join(os.path.dirname(__file__), "monitor_config.json")
+        if os.path.exists(_config_path):
+            try:
+                import json as _json
+                with open(_config_path) as _f:
+                    vital_aliases = _json.load(_f)
+            except Exception:
+                pass
+
     request.files["monitor_photo"].save(monitor_path)
     logger.info(f"[{uid}] Image saved — starting pipeline…")
 
     try:
-        result = run_pipeline(monitor_path)
+        result = run_pipeline(monitor_path, vital_aliases=vital_aliases)
         return jsonify(result)
     except Exception as exc:
         logger.error(f"[{uid}] Pipeline error: {exc}", exc_info=True)

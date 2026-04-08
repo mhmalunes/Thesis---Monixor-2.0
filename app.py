@@ -25,7 +25,36 @@ st.markdown(
 
         /* Hide Streamlit chrome */
         #MainMenu, footer, header { visibility: hidden; }
-        .block-container { padding-top: 2rem; padding-bottom: 2rem; }
+        .block-container { padding-top: 2rem; padding-bottom: 5rem; }
+
+        /* Bottom nav bar — fixed to viewport bottom */
+        .nav-bar-wrapper {
+            position: fixed;
+            bottom: 0; left: 0; right: 0;
+            background: #FFFFFF;
+            border-top: 1.5px solid #E0D8D0;
+            z-index: 9999;
+            padding: 0.4rem 0 0.5rem;
+        }
+        .nav-bar-inner {
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+        }
+        .nav-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-size: 0.7rem;
+            color: #999;
+            gap: 2px;
+            min-width: 70px;
+            text-align: center;
+            text-decoration: none;
+            cursor: pointer;
+        }
+        .nav-item.active { color: #7B1C1C; font-weight: 700; }
+        .nav-icon { font-size: 1.3rem; line-height: 1; }
 
         /* Primary buttons — always solid maroon, white text */
         .stButton > button {
@@ -107,7 +136,7 @@ def go_to(screen: str):
 # from screens.transcription import render as render_transcription
 # from screens.review        import render as render_review
 # from screens.history       import render as render_history
-# from screens.settings      import render as render_settings
+from screens.settings      import render as render_settings
 
 # ── Login screen (inline — no separate file yet) ──────────────────────────────
 def render_login():
@@ -169,6 +198,38 @@ def render_login():
             unsafe_allow_html=True,
         )
 
+# ── Bottom navigation bar ─────────────────────────────────────────────────────
+NAV_ITEMS = [
+    ("dashboard", "🏠", "Home"),
+    ("patient_list", "📋", "Records"),
+    ("history", "🕐", "History"),
+    ("settings", "⚙️", "Settings"),
+]
+
+def render_bottom_nav(current_screen: str):
+    items_html = ""
+    for screen_key, icon, label in NAV_ITEMS:
+        active_class = "active" if current_screen == screen_key else ""
+        # Use query param link so clicking navigates via Streamlit's URL mechanism
+        items_html += (
+            f"<div class='nav-item {active_class}' "
+            f"onclick=\"window.location.href='?nav={screen_key}'\">"
+            f"<span class='nav-icon'>{icon}</span>{label}</div>"
+        )
+
+    st.markdown(
+        f"<div class='nav-bar-wrapper'><div class='nav-bar-inner'>{items_html}</div></div>",
+        unsafe_allow_html=True,
+    )
+
+    # Handle nav click via query params
+    params = st.query_params
+    if "nav" in params and params["nav"] != current_screen:
+        target = params["nav"]
+        st.query_params.clear()
+        go_to(target)
+
+
 # ── Router ────────────────────────────────────────────────────────────────────
 def main():
     screen = st.session_state.screen
@@ -195,8 +256,10 @@ def main():
     elif screen == "history":
         st.info("History screen — coming soon.")
     elif screen == "settings":
-        st.info("Settings screen — coming soon.")
+        render_settings()
     else:
         go_to("login")
+
+    render_bottom_nav(screen)
 
 main()
