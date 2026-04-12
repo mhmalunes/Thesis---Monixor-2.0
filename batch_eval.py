@@ -43,11 +43,11 @@ GT_URL = (
     "/export?format=csv"
 )
 
-OUTPUT_XLSX  = "Left_batch_results.xlsx"
-OUTPUT_CSV   = "Left_batch_results.csv"
+OUTPUT_XLSX  = "batch_results.xlsx"
+OUTPUT_CSV   = "batch_results.csv"
 IMAGE_EXTS   = {".jpg", ".jpeg", ".png"}
 LIMIT        = None   # e.g. 10 to run only first N; None = all
-ANGLE_FILTER = "Left"  # e.g. "Left" or ["Left","Right"] to test specific angles only; None = all
+ANGLE_FILTER = None  # e.g. "Left" or ["Left","Right"] to test specific angles only; None = all
 TOLERANCE    = 1
 
 VITALS = [
@@ -111,7 +111,7 @@ def is_correct(pred_str, gt_str, vital_key):
     if not pred_str or not gt_str:
         return False
     if vital_key == "NIBP":
-        return pred_str == gt_str
+        return pred_str.replace(" ", "") == gt_str.replace(" ", "")
     try:
         return abs(float(pred_str) - float(gt_str)) <= TOLERANCE
     except ValueError:
@@ -466,7 +466,7 @@ def run_batch():
             processed += 1
 
             vital_str = "  ".join(
-                f"{api_key}={'✓' if record[f'{api_key}_ok']=='1' else '✗'}"
+                f"{api_key}={'OK' if record[f'{api_key}_ok']=='1' else 'XX'}"
                 f"({record[f'{api_key}_pred']}|gt:{record[f'{api_key}_gt']})"
                 for api_key, _ in VITALS
             )
@@ -500,13 +500,13 @@ def run_batch():
     has_main  = len(main_rows) > 0
 
     print("\nACCURACY SUMMARY")
-    print("─" * 60)
+    print("-" * 60)
     if has_main:
-        print(f"{'Vital':<14}  {'Dev':>12}  {'Main (ref)':>12}  {'Δ':>5}")
+        print(f"{'Vital':<14}  {'Dev':>12}  {'Main (ref)':>12}  {'D':>5}")
         print(f"{'':14}  {'correct / %':>12}  {'correct / %':>12}  {'':>5}")
     else:
         print(f"{'Vital':<14}  {'Correct':>7}  {'%':>7}")
-    print("─" * 60)
+    print("-" * 60)
 
     dev_total = 0
     main_total = 0
@@ -532,7 +532,7 @@ def run_batch():
     dev_all  = sum(1 for r in results
                    if all(r[f"{api_key}_ok"] == "1" for api_key, _ in VITALS))
     dev_all_pct = dev_all / n * 100
-    print("─" * 60)
+    print("-" * 60)
     if has_main:
         m_all = sum(1 for mr in main_rows
                     if all(str(mr.get(f"{main_key[k]}_ok","")).strip().upper() == "TRUE"
