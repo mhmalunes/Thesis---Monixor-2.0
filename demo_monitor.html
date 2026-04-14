@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>BeneView T8 — Demo Monitor</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{width:100%;height:100%;background:#000;overflow:hidden;
+  font-family:Arial,'Arial Narrow',sans-serif;color:#fff;}
+
+/* ── SCREEN ── */
+#screen{width:100vw;max-width:calc(100vh * 1.4);height:100vh;display:flex;flex-direction:column;overflow:hidden;margin:0 auto;}
+
+/* ── TOP BARS ── */
+#tb1{
+  flex:0 0 24px;background:#0a0a1e;border-bottom:1px solid #222;
+  display:flex;align-items:center;justify-content:space-between;padding:0 10px;
+  font-size:13px;
+}
+#tb2{
+  flex:0 0 20px;background:#0a0a1e;border-bottom:1px solid #222;
+  display:flex;align-items:center;padding:0 10px;gap:8px;
+  font-size:12px;color:#999;
+}
+
+/* ── WAVE ROWS ── */
+#ecg-row  {flex:0 0 26%;}
+#pleth-row{flex:0 0 24%;}
+#resp-row {flex:0 0 20%;}
+
+.wave-row{
+  display:flex;width:100%;overflow:hidden;
+  border-bottom:1px solid #1a1a1a;
+}
+
+/* left: waveform canvas area — 60% */
+.wave-area{
+  flex:0 0 60%;
+  position:relative;overflow:hidden;
+}
+.wave-area canvas{
+  position:absolute;top:0;left:0;width:100%;height:100%;display:block;
+}
+
+/* ── VALUE PANELS — 40% ── */
+.vp{
+  flex:0 0 40%;
+  border-left:1px solid #2a2a2a;
+  overflow:hidden;
+  position:relative;
+}
+
+/* ── ECG VALUE PANEL ── */
+#ecg-vp{
+  display:flex;flex-direction:column;
+  align-items:flex-start;
+  height:100%;
+  padding:8px 14px;
+  overflow:hidden;
+  position:relative;
+}
+#ecg-vp .vp-lbl{font-size:13px;font-weight:bold;color:#0f0;}
+#ecg-vp .hr-num{
+  font-size:clamp(48px,6.5vw,78px);font-weight:bold;color:#00ff00;
+  line-height:1;font-variant-numeric:tabular-nums;
+}
+#ecg-vp .vp-bot{
+  display:flex;flex-direction:column;align-items:flex-end;justify-content:space-between;
+  position:absolute;right:35%;top:35%;bottom:35%;
+}
+#ecg-vp .pvcs{font-size:11px;color:#f44;display:flex;flex-direction:column;align-items:flex-start;line-height:1.2;}
+#ecg-vp .stoff{font-size:11px;color:#888;}
+/* Outer row: [label+scale col] + [big number] */
+.vp-num-row{
+  display:flex;flex-direction:row;align-items:center;gap:8px;
+  margin-top:auto;margin-bottom:auto;
+}
+#pleth-vp .vp-num-row{
+  gap:16px;
+  padding-left:20px;
+  align-items:center;
+  margin-top:auto;
+  margin-bottom:auto;
+}
+/* Left column: label stacked above scale, right-edges aligned */
+.vp-lbl-col{
+  display:flex;flex-direction:column;align-items:flex-end;gap:2px;
+}
+/* Scale numbers */
+.vp-left-lbl{
+  display:flex;flex-direction:column;gap:1px;
+  font-size:11px;color:#666;line-height:1.2;text-align:right;
+}
+
+/* ── PLETH VALUE PANEL — same column layout as ECG/Resp ── */
+#pleth-vp{
+  display:flex;flex-direction:column;
+  align-items:flex-start;
+  height:100%;
+  padding:8px 14px;
+  overflow:hidden;
+  position:relative;
+}
+#pleth-vp .vp-lbl{font-size:13px;font-weight:bold;color:#0ff;}
+.spo2-num{
+  font-size:clamp(52px,7vw,82px);font-weight:bold;color:#00ffff;
+  line-height:1;font-variant-numeric:tabular-nums;
+}
+/* PR info — inline right of SpO2 value */
+#pr-sub{
+  display:flex;flex-direction:column;align-items:center;gap:2px;
+  position:absolute;right:35%;top:50%;transform:translateY(-50%);
+}
+#pr-sub .pr-lbl{font-size:10px;color:#0ff;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;line-height:1.2;}
+#pr-sub .pr-bar-num{
+  display:flex;flex-direction:row;align-items:flex-end;gap:3px;
+}
+.pr-right{display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-end;gap:0;}
+#pr-sub .pr-bar-wrap{
+  width:6px;height:48px;background:#050505;border:1px solid #0aa;
+  position:relative;overflow:hidden;
+}
+#pr-sub .pr-bar-inner{
+  position:absolute;bottom:0;width:100%;background:#00aaaa;transition:height .6s;
+}
+#pr-sub .pr-num{
+  font-size:28px;font-weight:bold;color:#0ff;
+  font-variant-numeric:tabular-nums;line-height:1;
+}
+#pr-sub .pr-src{font-size:9px;color:#555;text-align:center;}
+
+/* ── RESP VALUE PANEL — column layout matching ECG/SpO2 ── */
+#resp-vp{
+  display:flex;flex-direction:column;
+  align-items:flex-start;
+  height:100%;
+  padding:8px 14px;
+  overflow:hidden;position:relative;
+}
+#resp-vp .rr-num{
+  font-size:clamp(44px,6vw,72px);font-weight:bold;color:#ffff00;
+  line-height:1;font-variant-numeric:tabular-nums;
+}
+.resp-lbl{
+  font-size:13px;font-weight:bold;color:#ff0;
+}
+
+/* ── WAVE OVERLAYS (labels, scales) ── */
+.lbl-tl{position:absolute;top:5px;left:12px;font-size:13px;font-weight:bold;z-index:2;white-space:nowrap;}
+.lbl-bl{position:absolute;bottom:6px;left:10px;font-size:11px;color:#666;z-index:2;}
+
+/* ECG scale */
+.ecg-s120{position:absolute;right:8px;top:28px;font-size:11px;color:#666;z-index:2;}
+.ecg-s050{position:absolute;right:8px;top:46px;font-size:11px;color:#666;z-index:2;}
+
+/* SpO2 scale */
+.spo2-s100{position:absolute;right:8px;top:28px;font-size:11px;color:#666;z-index:2;}
+.spo2-s090{position:absolute;right:8px;top:46px;font-size:11px;color:#666;z-index:2;}
+
+/* Resp scale */
+.resp-s30{position:absolute;right:8px;top:28px;font-size:11px;color:#666;z-index:2;}
+.resp-s08{position:absolute;right:8px;top:46px;font-size:11px;color:#666;z-index:2;}
+
+/* ── WAVEFOOT ── */
+#wavefoot{
+  flex:0 0 18px;background:#000;border-bottom:1px solid #1a1a1a;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 10px;font-size:10px;color:#555;
+}
+
+/* ── BOTTOM SECTION ── */
+#bottom{flex:1;display:flex;min-height:0;overflow:hidden;}
+
+/* Temp box */
+#temp-box{
+  flex:0 0 28%;
+  border:1.5px solid #aaa;margin:4px 3px 4px 6px;
+  padding:6px 8px;
+  display:flex;flex-direction:column;justify-content:flex-start;
+  overflow:hidden;
+}
+.tb-hdr{font-size:12px;color:#ccc;line-height:1.4;}
+.tb-body{flex:1;display:flex;align-items:center;justify-content:flex-start;gap:8px;}
+.tb-icon{display:flex;flex-direction:column;align-items:center;gap:2px;}
+.tb-redx{font-size:16px;color:#f33;line-height:1;}
+.tb-t1{font-size:11px;color:#bbb;line-height:1;}
+.tb-val{font-size:60px;font-weight:bold;color:#fff;line-height:1;font-variant-numeric:tabular-nums;}
+
+/* NIBP list */
+#nibp-list{
+  flex:1;padding:4px 6px;overflow:hidden;
+  display:flex;flex-direction:column;justify-content:center;
+  font-size:11px;color:#ccc;
+}
+#nibp-list table{width:100%;border-collapse:collapse;}
+#nibp-list td{padding:2px 4px;text-align:center;white-space:nowrap;}
+#nibp-list .nhdr{
+  color:#aaa;font-size:10px;
+  border-bottom:1px solid #222;padding-bottom:3px;
+}
+
+/* NIBP current */
+#nibp-cur{
+  flex:0 0 28%;
+  display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  padding:4px 6px 8px 6px;
+  position:relative;overflow:hidden;
+}
+.nibp-scale{
+  position:absolute;left:8px;top:10px;
+  font-size:10px;color:#555;
+  display:flex;flex-direction:column;gap:16px;
+}
+.nibp-tag{font-size:11px;color:#aaa;align-self:flex-start;margin-bottom:2px;}
+.nibp-ts{font-size:10px;color:#888;text-align:center;margin-bottom:2px;}
+.nibp-big{
+  font-size:64px;font-weight:bold;color:#fff;
+  line-height:1;text-align:center;font-variant-numeric:tabular-nums;
+}
+.nibp-mean{
+  font-size:28px;color:#fff;
+  text-align:center;font-variant-numeric:tabular-nums;
+}
+
+/* ── TOOLBAR ── */
+#toolbar{
+  flex:0 0 46px;background:#08081c;border-top:1px solid #1a1a3a;
+  display:flex;align-items:center;justify-content:space-around;padding:2px 4px;gap:2px;
+}
+.tb-btn{
+  background:linear-gradient(180deg,#3355cc,#1133aa);
+  border:1px solid #4477dd;border-radius:4px;
+  color:#fff;font-size:10px;padding:4px 5px;text-align:center;cursor:pointer;
+  flex:1;max-width:90px;min-width:32px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;user-select:none;
+}
+.tb-arr{
+  background:linear-gradient(180deg,#2244bb,#112299);
+  border:1px solid #3366cc;border-radius:3px;
+  color:#fff;font-size:14px;padding:4px 9px;cursor:pointer;user-select:none;flex:0 0 auto;
+}
+.tb-sys{background:linear-gradient(180deg,#1a1a1a,#0d0d0d);border:1px solid #333;}
+</style>
+</head>
+<body>
+<div id="screen">
+
+  <!-- ── TOP BARS ── -->
+  <div id="tb1">
+    <div style="color:#ccc;display:flex;gap:8px;align-items:center;">
+      <span style="color:#f88;">&#9632;</span><span>PACU 29</span>
+    </div>
+    <div style="font-weight:bold;letter-spacing:1px;">
+      Adm &nbsp;&nbsp; <span id="clock">12:00 PM</span>
+    </div>
+    <div style="color:#aaa;font-size:11px;">Adult</div>
+  </div>
+  <div id="tb2">
+    <span>&#9646;</span><span>x2</span><span>Monitor</span>
+  </div>
+
+  <!-- ── ECG ROW ── -->
+  <div class="wave-row" id="ecg-row">
+    <div class="wave-area">
+      <canvas id="ecg-cv"></canvas>
+      <span class="lbl-bl">1mV</span>
+    </div>
+    <div class="vp" id="ecg-vp">
+      <div class="vp-lbl">ECG</div>
+      <div class="vp-num-row">
+        <div class="vp-left-lbl"><span>120</span><span>50</span></div>
+        <div class="hr-num" id="hr-num">76</div>
+      </div>
+      <div class="vp-bot">
+        <div class="pvcs"><span style="color:#f44;display:block;">&#215;</span><span>PVCs 0</span></div>
+        <div class="stoff">ST OFF</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── PLETH ROW ── -->
+  <div class="wave-row" id="pleth-row">
+    <div class="wave-area">
+      <canvas id="pleth-cv"></canvas>
+      <span class="lbl-tl" style="color:#0ff;">Pleth</span>
+    </div>
+    <div class="vp" id="pleth-vp">
+      <div class="vp-lbl" style="color:#0ff;">SpO2 %</div>
+      <div class="vp-num-row">
+        <div class="vp-left-lbl"><span>100</span><span>90</span></div>
+        <div class="spo2-num" id="spo2-num">99</div>
+        <div id="pr-sub">
+          <div class="pr-bar-num">
+            <div class="pr-bar-wrap"><div class="pr-bar-inner" id="pr-bar" style="height:60%"></div></div>
+            <div class="pr-lbl"><span style="color:#f44;">&#215;</span><span>PR</span></div>
+            <div class="pr-num" id="pr-num">78</div>
+          </div>
+          <div class="pr-src">Source SpO2</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── RESP ROW ── -->
+  <div class="wave-row" id="resp-row">
+    <div class="wave-area">
+      <canvas id="resp-cv"></canvas>
+      <span class="lbl-tl" style="color:#ff0;">Imped. &nbsp;x2</span>
+    </div>
+    <div class="vp" id="resp-vp">
+      <span class="resp-lbl">Resp</span>
+      <div class="vp-num-row">
+        <div class="vp-left-lbl"><span>30</span><span>8</span></div>
+        <div class="rr-num" id="rr-num">14</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── WAVEFOOT ── -->
+  <div id="wavefoot">
+    <span>Current Configuration: Defaults</span>
+    <div style="display:flex;gap:7px;align-items:center;">
+      <span style="background:#1a1a3a;border:1px solid #333;padding:1px 5px;font-size:10px;color:#aaa;">&#9646;&#9646; PGH</span>
+      <span style="color:#4a4;">&#9646;&#9646;&#9646;</span>
+      <span style="color:#aaa;">&#9650;</span>
+    </div>
+  </div>
+
+  <!-- ── BOTTOM SECTION ── -->
+  <div id="bottom">
+
+    <!-- Temp -->
+    <div id="temp-box">
+      <div class="tb-hdr">Temp<br>°C</div>
+      <div class="tb-body">
+        <div class="tb-icon">
+          <span class="tb-redx">&#215;</span>
+          <span class="tb-t1">T1</span>
+        </div>
+        <span class="tb-val" id="temp-num">23.0</span>
+      </div>
+    </div>
+
+    <!-- NIBP list -->
+    <div id="nibp-list">
+      <table>
+        <thead>
+          <tr>
+            <td class="nhdr">NIBP List mmHg</td>
+            <td class="nhdr">PR</td>
+            <td class="nhdr">Time</td>
+          </tr>
+        </thead>
+        <tbody>
+          <tr id="nr1"><td>—</td><td>—</td><td>—</td></tr>
+          <tr id="nr2"><td>—</td><td>—</td><td>—</td></tr>
+          <tr id="nr3"><td>—</td><td>—</td><td>—</td></tr>
+          <tr id="nr4"><td>—</td><td>—</td><td>—</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- NIBP current -->
+    <div id="nibp-cur">
+      <div class="nibp-scale"><span>160</span><span>90</span></div>
+      <div class="nibp-tag">NIBP mmHg</div>
+      <div class="nibp-ts" id="nibp-ts">—</div>
+      <div class="nibp-big" id="nibp-val">94/78</div>
+      <div class="nibp-mean" id="nibp-mean">(83)</div>
+    </div>
+
+  </div>
+
+  <!-- ── TOOLBAR ── -->
+  <div id="toolbar">
+    <div class="tb-arr">&#9664;</div>
+    <div class="tb-btn">NIBP Measure</div>
+    <div class="tb-btn">Stop All</div>
+    <div class="tb-btn">Zero BP</div>
+    <div class="tb-btn">Screens</div>
+    <div class="tb-btn">Patient Setup</div>
+    <div class="tb-btn">Manual Event</div>
+    <div class="tb-arr">&#9654;</div>
+    <div class="tb-btn tb-sys">Standby</div>
+    <div class="tb-btn tb-sys">Alarm Setup</div>
+    <div class="tb-btn tb-sys">Review</div>
+    <div class="tb-btn tb-sys">Main Menu</div>
+  </div>
+
+</div>
+<script>
+const V={hr:76,spo2:99,pr:78,rr:14,temp:23.0,sys:94,dia:78};
+const nibpHist=[];
+
+function tickClock(){
+  const d=new Date();let h=d.getHours(),m=String(d.getMinutes()).padStart(2,'0');
+  const ap=h>=12?'PM':'AM';h=h%12||12;
+  document.getElementById('clock').textContent=`${h}:${m} ${ap}`;
+}
+setInterval(tickClock,1000);tickClock();
+
+const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
+const drift=(v,s,lo,hi)=>clamp(v+(Math.random()<.5?-s:s),lo,hi);
+
+function timeStr(offsetMs=0){
+  const d=new Date(Date.now()+offsetMs);let h=d.getHours(),m=String(d.getMinutes()).padStart(2,'0');
+  const ap=h>=12?'PM':'AM';h=h%12||12;return `${h}:${m} ${ap}`;
+}
+function elapsed(start){
+  const s=Math.floor((Date.now()-start)/1000);
+  return [Math.floor(s/3600),Math.floor((s%3600)/60),s%60].map(x=>String(x).padStart(2,'0')).join(':');
+}
+let nibpStart=Date.now();
+
+function updateVitals(){
+  V.hr  =drift(V.hr,  1,58,105);
+  V.spo2=drift(V.spo2,1,94,100);
+  V.pr  =clamp(Math.round(V.hr+(Math.random()-.5)*4),55,110);
+  V.rr  =drift(V.rr,  1,12,22);
+  V.temp=clamp(+(V.temp+(Math.random()-.5)*.2).toFixed(1),22.0,24.5);
+  document.getElementById('hr-num').textContent  =Math.round(V.hr);
+  document.getElementById('spo2-num').textContent=Math.round(V.spo2);
+  document.getElementById('pr-num').textContent  =Math.round(V.pr);
+  document.getElementById('rr-num').textContent  =Math.round(V.rr);
+  document.getElementById('temp-num').textContent=V.temp.toFixed(1);
+  document.getElementById('pr-bar').style.height =clamp((V.pr-40)/80*100,10,95)+'%';
+  document.getElementById('nibp-ts').textContent =`${timeStr()} \u00a0 ${elapsed(nibpStart)} \u00a0 15 min`;
+}
+
+function renderNIBPTable(){
+  for(let i=0;i<4;i++){
+    const r=document.getElementById(`nr${i+1}`);
+    if(nibpHist[i]){
+      const h=nibpHist[i];
+      r.children[0].textContent=`${h.sys}/${h.dia} (${h.mean})`;
+      r.children[1].textContent=h.pr;
+      r.children[2].textContent=h.t;
+    }
+  }
+}
+function initNIBPHistory(){
+  [{sys:94,dia:78,pr:74},{sys:96,dia:74,pr:76},{sys:92,dia:76,pr:79},{sys:95,dia:72,pr:75}]
+  .forEach((s,i)=>{
+    nibpHist.push({...s,mean:Math.round((s.sys+2*s.dia)/3),t:timeStr(-(i+1)*15*60*1000)});
+  });
+  renderNIBPTable();
+  const c=nibpHist[0];
+  document.getElementById('nibp-val').textContent=`${c.sys}/${c.dia}`;
+  document.getElementById('nibp-mean').textContent=`(${c.mean})`;
+}
+function updateNIBP(){
+  V.sys=drift(V.sys,3,88,108);V.dia=drift(V.dia,2,68,84);
+  const mean=Math.round((V.sys+2*V.dia)/3);
+  nibpStart=Date.now();
+  document.getElementById('nibp-val').textContent=`${Math.round(V.sys)}/${Math.round(V.dia)}`;
+  document.getElementById('nibp-mean').textContent=`(${mean})`;
+  nibpHist.unshift({sys:Math.round(V.sys),dia:Math.round(V.dia),mean,pr:Math.round(V.pr),t:timeStr()});
+  if(nibpHist.length>4)nibpHist.pop();
+  renderNIBPTable();
+}
+setInterval(updateVitals,2500);
+setInterval(updateNIBP,15000);
+updateVitals();initNIBPHistory();
+
+// ── WAVEFORMS ──
+function ecgBeat(n){
+  const p=new Float32Array(n);
+  for(let i=0;i<n;i++){
+    const t=i/n;let v=0.35;
+    if     (t>=.06&&t<.18)   v=.35+.12*Math.sin((t-.06)/.12*Math.PI);
+    else if(t>=.24&&t<.256)  v=.35-.09*Math.sin((t-.24)/.016*Math.PI);
+    else if(t>=.256&&t<.286) v=.35+.68*Math.sin((t-.256)/.030*Math.PI);
+    else if(t>=.286&&t<.312) v=.35-.13*Math.sin((t-.286)/.026*Math.PI);
+    else if(t>=.312&&t<.40)  v=.35;
+    else if(t>=.40&&t<.62)   v=.35+.13*Math.sin((t-.40)/.22*Math.PI);
+    p[i]=v;
+  }
+  return p;
+}
+
+function plethBeat(n,amp=1.0){
+  const p=new Float32Array(n);
+  const pk=0.10+0.78*amp;
+  for(let i=0;i<n;i++){
+    const t=i/n;let v=0.10;
+    if     (t<.25) v=0.10+(pk-.10)*Math.sin(t/.25*Math.PI/2);
+    else if(t<.55) v=0.10+(pk-.10)*Math.cos((t-.25)/.30*Math.PI/2);
+    else if(t<.68) v=0.10+(pk-.10)*.18*Math.sin((t-.55)/.13*Math.PI);
+    else           v=0.10+(pk-.10)*.05*Math.exp(-8*(t-.68));
+    p[i]=clamp(v,.08,.92);
+  }
+  return p;
+}
+
+function respBeat(n){
+  const p=new Float32Array(n);
+  for(let i=0;i<n;i++) p[i]=.18+.64*(.5+.5*Math.sin(i/n*2*Math.PI-Math.PI/2));
+  return p;
+}
+
+class ScrollWave{
+  constructor(id,color,beatFn,bpmFn,speed,ampVary=false){
+    this.cv=document.getElementById(id);
+    this.ctx=this.cv.getContext('2d');
+    this.color=color;this.beatFn=beatFn;this.bpmFn=bpmFn;
+    this.speed=speed;this.ampVary=ampVary;
+    this.queue=[];this.lastY=null;this.ready=false;
+  }
+  _spb(){return Math.round(this.speed*60*(60/this.bpmFn()));}
+  _fill(){
+    const amp=this.ampVary?(.80+Math.random()*.20):1.0;
+    const s=this.ampVary?this.beatFn(this._spb(),amp):this.beatFn(this._spb());
+    for(let i=0;i<s.length;i++)this.queue.push(s[i]);
+  }
+  init(){
+    const area=this.cv.parentElement;
+    const W=area.offsetWidth||800;
+    const H=area.offsetHeight||150;
+    this.cv.width=W;this.cv.height=H;
+    this.ctx.fillStyle='#000';this.ctx.fillRect(0,0,W,H);
+    this.queue=[];this.lastY=null;
+    while(this.queue.length<W+600)this._fill();
+    const pad=H*.12,dH=H-pad*2;
+    this.ctx.strokeStyle=this.color;this.ctx.lineWidth=2;
+    this.ctx.lineJoin='round';this.ctx.lineCap='round';
+    this.ctx.beginPath();
+    for(let x=0;x<W;x++){
+      const v=this.queue.length?this.queue.shift():.35;
+      const y=pad+(1-v)*dH;
+      x===0?this.ctx.moveTo(x,y):this.ctx.lineTo(x,y);
+      if(x===W-1)this.lastY=y;
+    }
+    this.ctx.stroke();
+    this.ready=true;
+  }
+  draw(){
+    if(!this.ready)return;
+    const ctx=this.ctx,W=this.cv.width,H=this.cv.height;
+    if(!W||!H)return;
+    while(this.queue.length<W+this.speed*4)this._fill();
+    if(W>this.speed){const img=ctx.getImageData(this.speed,0,W-this.speed,H);ctx.putImageData(img,0,0);}
+    ctx.fillStyle='#000';ctx.fillRect(W-this.speed-1,0,this.speed+2,H);
+    const pad=H*.12,dH=H-pad*2;
+    ctx.strokeStyle=this.color;ctx.lineWidth=2;ctx.lineJoin='round';ctx.lineCap='round';
+    ctx.beginPath();
+    if(this.lastY!==null)ctx.moveTo(W-this.speed-1,this.lastY);
+    for(let dx=0;dx<this.speed;dx++){
+      const v=this.queue.length?this.queue.shift():.35;
+      const x=W-this.speed+dx,y=pad+(1-v)*dH;
+      ctx.lineTo(x,y);
+      if(dx===this.speed-1)this.lastY=y;
+    }
+    ctx.stroke();
+  }
+}
+
+let ecgW,plethW,respW;
+window.addEventListener('load',()=>{
+  setTimeout(()=>{
+    ecgW  =new ScrollWave('ecg-cv',  '#00ff00',ecgBeat,  ()=>V.hr, 2,false);
+    plethW=new ScrollWave('pleth-cv','#00cccc',plethBeat,()=>V.hr, 2,true);
+    respW =new ScrollWave('resp-cv', '#ffff00',respBeat, ()=>V.rr, 1,false);
+    ecgW.init();plethW.init();respW.init();
+    const loop=()=>{ecgW.draw();plethW.draw();respW.draw();requestAnimationFrame(loop);};
+    loop();
+  },400);
+});
+window.addEventListener('resize',()=>{
+  if(ecgW)ecgW.init();if(plethW)plethW.init();if(respW)respW.init();
+});
+</script>
+</body>
+</html>
