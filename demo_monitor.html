@@ -24,8 +24,8 @@ html,body{width:100%;height:100%;background:#000;overflow:hidden;
 }
 
 /* ── WAVE ROWS ── */
-#ecg-row  {flex:0 0 26%;}
-#pleth-row{flex:0 0 24%;}
+#ecg-row  {flex:0 0 30%;}
+#pleth-row{flex:0 0 26%;}
 #resp-row {flex:0 0 20%;}
 
 .wave-row{
@@ -59,14 +59,14 @@ html,body{width:100%;height:100%;background:#000;overflow:hidden;
   overflow:hidden;
   position:relative;
 }
-#ecg-vp .vp-lbl{font-size:13px;font-weight:bold;color:#0f0;}
+#ecg-vp .vp-lbl{font-size:13px;font-weight:bold;color:#0f0;position:absolute;top:6px;left:8px;z-index:3;}
 #ecg-vp .hr-num{
-  font-size:clamp(48px,6.5vw,78px);font-weight:bold;color:#00ff00;
+  font-size:clamp(64px,8.5vw,104px);font-weight:bold;color:#00ff00;
   line-height:1;font-variant-numeric:tabular-nums;
 }
 #ecg-vp .vp-bot{
   display:flex;flex-direction:column;align-items:flex-end;justify-content:space-between;
-  position:absolute;right:35%;top:35%;bottom:35%;
+  position:absolute;right:35%;top:20%;bottom:20%;
 }
 #ecg-vp .pvcs{font-size:11px;color:#f44;display:flex;flex-direction:column;align-items:flex-start;line-height:1.2;}
 #ecg-vp .stoff{font-size:11px;color:#888;}
@@ -101,12 +101,12 @@ html,body{width:100%;height:100%;background:#000;overflow:hidden;
   overflow:hidden;
   position:relative;
 }
-#pleth-vp .vp-lbl{font-size:13px;font-weight:bold;color:#0ff;}
+#pleth-vp .vp-lbl{font-size:13px;font-weight:bold;color:#0ff;position:absolute;top:6px;left:8px;z-index:3;}
 .spo2-num{
-  font-size:clamp(52px,7vw,82px);font-weight:bold;color:#00ffff;
+  font-size:clamp(68px,9vw,108px);font-weight:bold;color:#00ffff;
   line-height:1;font-variant-numeric:tabular-nums;
 }
-/* PR info — inline right of SpO2 value */
+/* PR info — right edge of SpO2 panel */
 #pr-sub{
   display:flex;flex-direction:column;align-items:center;gap:2px;
   position:absolute;right:35%;top:50%;transform:translateY(-50%);
@@ -138,11 +138,13 @@ html,body{width:100%;height:100%;background:#000;overflow:hidden;
   overflow:hidden;position:relative;
 }
 #resp-vp .rr-num{
-  font-size:clamp(44px,6vw,72px);font-weight:bold;color:#ffff00;
+  font-size:clamp(56px,7.5vw,90px);font-weight:bold;color:#ffff00;
   line-height:1;font-variant-numeric:tabular-nums;
+  font-family:'Arial',sans-serif;
 }
 .resp-lbl{
   font-size:13px;font-weight:bold;color:#ff0;
+  position:absolute;top:6px;left:8px;z-index:3;
 }
 
 /* ── WAVE OVERLAYS (labels, scales) ── */
@@ -180,9 +182,9 @@ html,body{width:100%;height:100%;background:#000;overflow:hidden;
   overflow:hidden;
 }
 .tb-hdr{font-size:12px;color:#ccc;line-height:1.4;}
-.tb-body{flex:1;display:flex;align-items:center;justify-content:flex-start;gap:8px;}
+.tb-body{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;}
 .tb-icon{display:flex;flex-direction:column;align-items:center;gap:2px;}
-.tb-redx{font-size:16px;color:#f33;line-height:1;}
+.tb-redx{font-size:16px;color:#f33;line-height:1;margin-left:-16px;}
 .tb-t1{font-size:11px;color:#bbb;line-height:1;}
 .tb-val{font-size:60px;font-weight:bold;color:#fff;line-height:1;font-variant-numeric:tabular-nums;}
 
@@ -208,14 +210,14 @@ html,body{width:100%;height:100%;background:#000;overflow:hidden;
   position:relative;overflow:hidden;
 }
 .nibp-scale{
-  position:absolute;left:8px;top:10px;
-  font-size:10px;color:#555;
-  display:flex;flex-direction:column;gap:16px;
+  font-size:11px;color:#555;
+  display:flex;flex-direction:column;gap:1px;
+  line-height:1.2;text-align:right;
 }
-.nibp-tag{font-size:11px;color:#aaa;align-self:flex-start;margin-bottom:2px;}
+.nibp-tag{font-size:13px;color:#aaa;align-self:flex-start;margin-bottom:2px;position:absolute;top:10px;left:6px;line-height:1.3;}
 .nibp-ts{font-size:10px;color:#888;text-align:center;margin-bottom:2px;}
 .nibp-big{
-  font-size:64px;font-weight:bold;color:#fff;
+  font-size:56px;font-weight:bold;color:#fff;
   line-height:1;text-align:center;font-variant-numeric:tabular-nums;
 }
 .nibp-mean{
@@ -364,11 +366,15 @@ html,body{width:100%;height:100%;background:#000;overflow:hidden;
 
     <!-- NIBP current -->
     <div id="nibp-cur">
-      <div class="nibp-scale"><span>160</span><span>90</span></div>
-      <div class="nibp-tag">NIBP mmHg</div>
+      <div class="nibp-tag"><span style="font-weight:bold;font-size:13px;">NIBP</span><br><span style="font-size:10px;">mmHg</span></div>
       <div class="nibp-ts" id="nibp-ts">—</div>
-      <div class="nibp-big" id="nibp-val">94/78</div>
-      <div class="nibp-mean" id="nibp-mean">(83)</div>
+      <div style="display:flex;flex-direction:row;align-items:center;gap:12px;margin-left:-8px;">
+        <div class="nibp-scale"><span>160</span><span>90</span></div>
+        <div>
+          <div class="nibp-big" id="nibp-val">94/78</div>
+          <div class="nibp-mean" id="nibp-mean">(83)</div>
+        </div>
+      </div>
     </div>
 
   </div>

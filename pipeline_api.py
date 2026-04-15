@@ -27,7 +27,8 @@ from difflib import SequenceMatcher
 
 import cv2
 import numpy as np
-from flask import Flask, request, jsonify
+from PIL import Image, ImageOps
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 import easyocr
 
@@ -1262,6 +1263,12 @@ def run_pipeline(monitor_path: str, vital_aliases: dict = None) -> dict:
 
 # ── Flask endpoints ────────────────────────────────────────────────────────────
 
+@app.route("/", methods=["GET"])
+@app.route("/index.html", methods=["GET"])
+def serve_index():
+    return send_file(os.path.join(os.path.dirname(__file__), "index.html"))
+
+
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({"status": "ok"})
@@ -1283,7 +1290,7 @@ def debug_ocr():
     request.files["monitor_photo"].save(monitor_path)
 
     try:
-        img          = cv2.imread(monitor_path)
+        img          = cv2.imdecode(np.fromfile(monitor_path, dtype=np.uint8), cv2.IMREAD_COLOR)
         img_straight = _deskew(img)
 
         gray_c     = cv2.cvtColor(img_straight, cv2.COLOR_BGR2GRAY)
@@ -1373,6 +1380,17 @@ def pipeline_endpoint():
                 pass
 
     request.files["monitor_photo"].save(monitor_path)
+
+    # Fix EXIF rotation — phone camera photos store pixels sideways;
+    # exif_transpose() re-orients the pixels so cv2.imread gets the correct orientation.
+    try:
+        _pil = ImageOps.exif_transpose(Image.open(monitor_path))
+        _tmp = monitor_path + ".tmp"
+        _pil.save(_tmp)
+        os.replace(_tmp, monitor_path)
+    except Exception:
+        pass  # non-JPEG or no EXIF — leave file as-is
+
     logger.info(f"[{uid}] Image saved — starting pipeline…")
 
     try:
