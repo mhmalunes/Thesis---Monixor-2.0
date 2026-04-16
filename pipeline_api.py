@@ -400,6 +400,7 @@ def run_pipeline(monitor_path: str, vital_aliases: dict = None) -> dict:
     labels_found = []
     values_found = []
     paren_values = []   # parenthesized readings (e.g. "(83)") at lower conf threshold
+    channel_labels = []  # short alpha tokens that aren't vital labels (e.g. "ABP", "PAP", "CVP")
 
     # Find the y-position of "BeneView T8" or equivalent external hardware text
     # so we can exclude any detections below it (they are outside the monitor screen).
@@ -419,6 +420,13 @@ def run_pipeline(monitor_path: str, vital_aliases: dict = None) -> dict:
             labels_found.append((lbl, center, conf, cleaned, bbox))
         elif _is_value(cleaned) and conf > 0.25:
             values_found.append((cleaned, center, conf, bbox))
+        else:
+            # Collect short alphabetic tokens that look like channel labels
+            # (e.g. "ABP", "PAP", "CVP") — used to block those channels from
+            # being mistaken for NIBP in the standalone fallback below.
+            _cl = cleaned.upper().strip(".:, ")
+            if 2 <= len(_cl) <= 5 and _cl.isalpha() and conf > 0.15:
+                channel_labels.append((_cl, center))
         # Collect parenthesized values at lower confidence — monitors show MAP as "(83)"
         # which can be low-confidence due to small font.
         if (cleaned.startswith("(") and cleaned.endswith(")")
@@ -480,7 +488,8 @@ def run_pipeline(monitor_path: str, vital_aliases: dict = None) -> dict:
                     parts = cand[0].split("/")
                     if len(parts) == 2:
                         try:
-                            if int(parts[0]) > int(parts[1]):
+                            # Strip embedded MAP "(96)" from diastolic field
+                            if int(parts[0]) > int(parts[1].split("(")[0].strip()):
                                 best = cand
                                 break
                         except ValueError:
@@ -1166,25 +1175,56 @@ def run_pipeline(monitor_path: str, vital_aliases: dict = None) -> dict:
 
     # ── NIBP standalone fallback (runs when NIBP label was never detected) ────
     if "NIBP" not in paired:
-        # Look for a "sys/dia" token in the right half with valid BP range
-        fc = [(t, c, f) for (t, c, f, b) in values_found
-              if "/" in t and c[0] > img_w * 0.45]
-        valid_nibp = []
-        for (t, c, f) in fc:
+        # Collect all valid BP "sys/dia" tokens from the image.
+        _bp_cands = []
+        for (t, c, f, b) in values_found:
+            if "/" not in t:
+                continue
             parts = t.split("/")
             if len(parts) == 2:
                 try:
-                    s, d = int(parts[0]), int(parts[1])
+                    s, d = int(parts[0]), int(parts[1].split("(")[0].strip())
                     if 50 <= s <= 220 and 30 <= d <= 130 and s > d:
-                        valid_nibp.append((t, c, f))
+                        _bp_cands.append((t, c, f))
                 except ValueError:
                     pass
-        if valid_nibp:
-            # Prefer the rightmost (main reading, not the small history list)
-            valid_nibp.sort(key=lambda v: v[1][0], reverse=True)
-            best = valid_nibp[0]
-            paired["NIBP"] = {"value": best[0], "value_conf": round(best[2], 2),
+
+        best = None
+
+        if _bp_cands:
+            # Build a combined list of ALL label positions (vital labels + channel labels
+            # like "ABP", "PAP", "CVP") to mark which BP tokens are already "claimed".
+            _all_label_centers = (
+                [(lc, ln) for (ln, lc, lconf, lraw, lbbox) in labels_deduped]
+                + [(cl_c, cl_t) for (cl_t, cl_c) in channel_labels]
+            )
+            _CLAIM_RADIUS = img_w * 0.25
+
+            def _is_claimed(c):
+                return any(_dist(c, lc) < _CLAIM_RADIUS for (lc, _) in _all_label_centers)
+
+            unclaimed = [(t, c, f) for (t, c, f) in _bp_cands if not _is_claimed(c)]
+
+            if unclaimed:
+                # Among unclaimed BP tokens, pick highest confidence
+                unclaimed.sort(key=lambda v: v[2], reverse=True)
+                best = unclaimed[0]
+                logger.info(f"NIBP fallback (unclaimed): {best[0]} (conf={best[2]:.2f})")
+            else:
+                # All BP tokens are near some label — last resort: highest confidence
+                _bp_cands.sort(key=lambda v: v[2], reverse=True)
+                best = _bp_cands[0]
+                logger.info(f"NIBP fallback (last-resort): {best[0]}")
+
+        if best:
+            # Store clean "sys/dia" without embedded MAP "(xx)"
+            _clean_nibp = best[0].split("(")[0].rstrip("/ ").strip()
+            paired["NIBP"] = {"value": _clean_nibp, "value_conf": round(best[2], 2),
                               "value_center": best[1]}
+            # Extract MAP embedded in the token e.g. "119/79(96)" → map=96
+            _m = re.search(r"\((\d+)\)", best[0])
+            if _m and not map_val:
+                map_val = _m.group(1)
             # Try to find MAP near it — prefer parenthesized value
             nibp_pos = best[1]
             pm = [(t, c, f) for (t, c, f, b) in paren_values
