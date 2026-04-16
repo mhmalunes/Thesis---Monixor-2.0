@@ -732,6 +732,23 @@ def run_pipeline(monitor_path: str, vital_aliases: dict = None) -> dict:
             spo2_ctr  = _spo2_center(paired, values_found)
             spo2_c    = paired.get("SpO2", {}).get("value_center")
             hr_c      = paired.get("HR",   {}).get("value_center")
+            # For non-standard PR labels (e.g. "Pulse") the value sits near the
+            # label, not near SpO2.  Use label-anchor search in that case.
+            # Bare "pr" is skipped here because "PR" also appears as a NIBP
+            # history column header — lcenter is unreliable for it.
+            if raw_text.lower().strip().rstrip(".:,") != "pr":
+                cands = [(t, c, f) for (t, c, f, b) in values_found
+                         if _dist(c, lcenter) < img_w * 0.15
+                         and "." not in t and "/" not in t and not t.startswith("(")
+                         and t.isdigit() and 20 < int(t) <= 250 and not t.startswith("0")
+                         and t != nibp_sys
+                         and (spo2_c is None or _dist(c, spo2_c) > 30)
+                         and (hr_c   is None or _dist(c, hr_c)   > 30)]
+                if cands:
+                    cands.sort(key=lambda v: _dist(lcenter, v[1]))
+                    paired["PR"] = {"value": cands[0][0], "value_conf": round(cands[0][2], 2),
+                                    "value_center": cands[0][1]}
+                    continue
             if spo2_ctr:
                 cands = [(t, c, f) for (t, c, f, b) in values_found
                          if c[0] > spo2_ctr[0] - 20 and abs(c[1] - spo2_ctr[1]) < 100

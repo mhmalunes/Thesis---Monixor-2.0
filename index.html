@@ -2727,6 +2727,11 @@
         aliases[inp.dataset.key] = vals.length ? vals : DEFAULT_ALIASES[inp.dataset.key];
       });
       localStorage.setItem('monixor_aliases', JSON.stringify(aliases));
+      fetch('/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(aliases),
+      }).catch(() => {});
       const msg = document.getElementById('alias-save-msg');
       msg.style.display = 'block';
       setTimeout(() => { msg.style.display = 'none'; }, 2500);
@@ -2973,6 +2978,8 @@
       // Build FormData
       const fd = new FormData();
       fd.append('monitor_photo', monitorFile);
+      const _savedAliases = localStorage.getItem('monixor_aliases');
+      if (_savedAliases) fd.append('vital_aliases', _savedAliases);
 
       fetch('http://192.168.1.4:5000/run_pipeline', { method: 'POST', body: fd })
         .then(res => {
