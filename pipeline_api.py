@@ -552,7 +552,7 @@ def run_pipeline(monitor_path: str, vital_aliases: dict = None) -> dict:
             continue
 
         if lname == "Temp":
-            cands = [(t, c, f) for (t, c, f, b) in values_found
+            cands = [(t, c, f, b) for (t, c, f, b) in values_found
                      if "." in t and c[1] > BELOW
                      and _safe_float(t) is not None and 15.0 <= _safe_float(t) <= 45.0]
             if not cands:
@@ -560,10 +560,15 @@ def run_pipeline(monitor_path: str, vital_aliases: dict = None) -> dict:
                 # Range 21-42: excludes stray display artefacts (clocks, scale markers)
                 # that fall below 20; upper bound covers high fever.
                 rr_val = paired.get("Resp", {}).get("value", "")
-                cands = [(t, c, f) for (t, c, f, b) in values_found
+                cands = [(t, c, f, b) for (t, c, f, b) in values_found
                          if t.isdigit() and 21 <= int(t) <= 42 and c[1] > BELOW
                          and t != rr_val]
             if cands:
+                # Filter out candidates that are much smaller than the largest one —
+                # actual temp digits are large; scale markers / noise are small font.
+                _max_area = max(_bbox_area(v[3]) for v in cands)
+                cands = [v for v in cands if _bbox_area(v[3]) >= _max_area * 0.30]
+                # Among the remaining large-enough candidates, pick the nearest to label.
                 cands.sort(key=lambda v: _dist(lcenter, v[1]))
                 paired["Temp"] = {"value": cands[0][0], "value_conf": round(cands[0][2], 2)}
             continue
@@ -844,21 +849,25 @@ def run_pipeline(monitor_path: str, vital_aliases: dict = None) -> dict:
                 try:
                     val = float(t.replace(",", "."))
                     if 15.0 <= val <= 45.0:
-                        fc.append((t, c, f))
+                        fc.append((t, c, f, b))
                 except ValueError:
                     pass
         if fc:
-            fc.sort(key=lambda v: v[2], reverse=True)
+            _max_area = max(_bbox_area(v[3]) for v in fc)
+            fc = [v for v in fc if _bbox_area(v[3]) >= _max_area * 0.30]
+            fc.sort(key=lambda v: v[2], reverse=True)  # highest confidence among large candidates
             paired["Temp"] = {"value": fc[0][0], "value_conf": round(fc[0][2], 2)}
         else:
             # OCR sometimes drops the decimal point (e.g. "23.0" → "23").
             used = {paired.get(k, {}).get("value", "")
                     for k in ("HR", "SpO2", "PR", "Resp")}
-            tc = [(t, c, f) for (t, c, f, b) in values_found
+            tc = [(t, c, f, b) for (t, c, f, b) in values_found
                   if t.isdigit() and 21 <= int(t) <= 42
                   and c[0] > img_w * 0.40 and c[1] > img_h * 0.50
                   and t not in used]
             if tc:
+                _max_area = max(_bbox_area(v[3]) for v in tc)
+                tc = [v for v in tc if _bbox_area(v[3]) >= _max_area * 0.30]
                 tc.sort(key=lambda v: v[2], reverse=True)
                 paired["Temp"] = {"value": tc[0][0], "value_conf": round(tc[0][2], 2)}
 
