@@ -362,6 +362,33 @@
       color: var(--muted);
       line-height: 1.5;
     }
+    .scenario-flow {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin: 0.1rem 0;
+    }
+    .scenario-step {
+      background: #f3ede8;
+      color: var(--maroon);
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 3px 10px;
+      border-radius: 99px;
+      white-space: nowrap;
+    }
+    .scenario-arrow {
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+    .scenario-when {
+      font-size: 0.78rem;
+      color: var(--muted);
+      font-style: italic;
+      line-height: 1.4;
+    }
 
     /* Bottom buttons row */
     .home-actions {
@@ -1169,7 +1196,7 @@
       display: flex;
       flex-direction: column;
       gap: 1.75rem;
-      max-width: 860px;
+      max-width: 1100px;
       width: 100%;
       margin: 0 auto;
       padding: 2rem 1.5rem 3rem;
@@ -1213,10 +1240,33 @@
       gap: 0.75rem;
     }
     #assign-confirmed {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      padding: 0.4rem 0;
+    }
+    #assign-confirmed-text {
       font-size: 0.88rem;
       font-weight: 700;
       color: #16a34a;
-      padding: 0.4rem 0;
+    }
+    .btn-undo-assign {
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.75rem;
+      font-weight: 600;
+      background: none;
+      border: 1.5px solid var(--border);
+      border-radius: 6px;
+      padding: 3px 10px;
+      color: var(--muted);
+      cursor: pointer;
+      white-space: nowrap;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .btn-undo-assign:hover {
+      border-color: var(--maroon);
+      color: var(--maroon);
     }
     #assign-search {
       width: 100%;
@@ -1275,22 +1325,20 @@
       border-radius: 12px;
       box-shadow: 0 2px 8px rgba(0,0,0,0.06);
       overflow: hidden;
-      overflow-x: auto;
     }
     .history-table {
       width: 100%;
       border-collapse: collapse;
-      font-size: 0.875rem;
-      min-width: 620px;
+      font-size: 0.8rem;
     }
     .history-table thead th {
       background: var(--maroon);
       color: var(--white);
-      font-size: 0.72rem;
+      font-size: 0.68rem;
       font-weight: 700;
       text-transform: uppercase;
-      letter-spacing: 0.06em;
-      padding: 0.7rem 1rem;
+      letter-spacing: 0.05em;
+      padding: 0.6rem 0.5rem;
       text-align: left;
       white-space: nowrap;
     }
@@ -1309,17 +1357,18 @@
       background: #f3ede8;
     }
     .history-table tbody td {
-      padding: 0.7rem 1rem;
+      padding: 0.5rem 0.5rem;
       color: var(--text);
-      white-space: nowrap;
+      word-break: break-word;
     }
     .history-table tbody td.td-value {
       font-weight: 700;
       color: var(--maroon);
+      text-align: center;
     }
     .history-table tbody td.td-time {
       color: var(--muted);
-      font-size: 0.8rem;
+      font-size: 0.72rem;
     }
     .history-table .no-data td {
       text-align: center;
@@ -1332,6 +1381,58 @@
       color: var(--text);
       font-size: 0.82rem;
     }
+
+    /* Deleted rows */
+    .history-table tbody tr.row-deleted {
+      background: #FEF2F2 !important;
+    }
+    .history-table tbody tr.row-deleted td,
+    .history-table tbody tr.row-deleted td.td-value,
+    .history-table tbody tr.row-deleted td.td-patient,
+    .history-table tbody tr.row-deleted td.td-time {
+      text-decoration: line-through;
+      color: #f87171;
+    }
+    .history-table tbody tr.row-deleted td.td-action {
+      text-decoration: none;
+      color: var(--muted);
+      font-size: 0.78rem;
+    }
+    .history-table tbody tr.row-deleted:hover { background: #FEF2F2 !important; }
+
+    /* Edited rows */
+    .history-table tbody tr.row-edited { background: #EFF6FF !important; }
+    .history-table tbody tr.row-edited:hover { background: #EFF6FF !important; }
+    .history-table tbody tr.row-edited td.td-value { color: #1D4ED8; }
+
+    /* Old/new value stacking inside edited cells */
+    .old-val {
+      display: block;
+      text-decoration: line-through;
+      color: #93C5FD;
+      font-size: 0.72rem;
+      font-weight: 400;
+      line-height: 1.4;
+    }
+    .new-val {
+      display: block;
+      font-weight: 700;
+    }
+
+    /* Row-state badges */
+    .history-badge {
+      display: inline-block;
+      font-size: 0.60rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      padding: 1px 6px;
+      border-radius: 99px;
+      vertical-align: middle;
+      margin-left: 5px;
+      text-transform: uppercase;
+    }
+    .badge-edited  { background: #DBEAFE; color: #1D4ED8; }
+    .badge-deleted { background: #FEE2E2; color: #B91C1C; }
 
     /* Delete button */
     .btn-delete {
@@ -2066,13 +2167,27 @@
       <div class="scenario-row">
         <div class="scenario-card" id="card-patient-first">
           <div class="scenario-emoji">🧑‍⚕️</div>
-          <div class="scenario-title">Patient First</div>
-          <div class="scenario-desc">Find the patient first, then capture a photo of their vital signs monitor.</div>
+          <div class="scenario-title">Select, then Scan</div>
+          <div class="scenario-flow">
+            <span class="scenario-step">Select patient</span>
+            <span class="scenario-arrow">→</span>
+            <span class="scenario-step">Scan monitor</span>
+            <span class="scenario-arrow">→</span>
+            <span class="scenario-step">Save</span>
+          </div>
+          <div class="scenario-when">Assign the patient first, then proceed to scan their monitor.</div>
         </div>
         <div class="scenario-card" id="card-photo-first">
           <div class="scenario-emoji">📷</div>
-          <div class="scenario-title">Photo First</div>
-          <div class="scenario-desc">Take a photo first, then assign the reading to the correct patient.</div>
+          <div class="scenario-title">Scan, then Assign</div>
+          <div class="scenario-flow">
+            <span class="scenario-step">Scan monitor</span>
+            <span class="scenario-arrow">→</span>
+            <span class="scenario-step">Save</span>
+            <span class="scenario-arrow">→</span>
+            <span class="scenario-step">Assign patient</span>
+          </div>
+          <div class="scenario-when">Scan the monitor first, then assign the reading to a patient.</div>
         </div>
       </div>
 
@@ -2272,7 +2387,10 @@
 
       <!-- Inline assign panel (Photo First only) -->
       <div id="assign-panel" style="display:none;">
-        <div id="assign-confirmed" style="display:none;"></div>
+        <div id="assign-confirmed" style="display:none;">
+          <span id="assign-confirmed-text"></span>
+          <button class="btn-undo-assign" id="btn-undo-assign">↩ Undo</button>
+        </div>
         <div id="assign-controls">
           <input id="assign-search" type="text" placeholder="Search patient by name or bed…" autocomplete="off" />
           <div id="assign-results"></div>
@@ -2374,7 +2492,6 @@
               <th>MAP (mmHg)</th>
               <th>RR (brpm)</th>
               <th>Temp (°C)</th>
-              <th>Action</th>
             </tr>
           </thead>
           <tbody id="history-screen-tbody"></tbody>
@@ -2981,7 +3098,7 @@
       const _savedAliases = localStorage.getItem('monixor_aliases');
       if (_savedAliases) fd.append('vital_aliases', _savedAliases);
 
-      fetch('http://192.168.1.4:5000/run_pipeline', { method: 'POST', body: fd })
+      fetch('/run_pipeline', { method: 'POST', body: fd })
         .then(res => {
           if (!res.ok) throw new Error('Server returned ' + res.status);
           return res.json();
@@ -3055,6 +3172,9 @@
     // ── Summary screen — declare data FIRST, wire listeners after ──
     const vitalsHistory = [];
     let unassignedEntryIdx = -1; // index of the latest "Unassigned" entry (photoFirst)
+    let currentSummaryPatient = null; // patient currently being viewed in summary screen
+    let lastAssignedIdx     = -1;    // vitalsHistory index of the last photo-first assignment
+    let lastAssignedPatient = null;  // previous patient state before assignment (for undo)
 
     function formatTimestamp(date) {
       return date.toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })
@@ -3062,16 +3182,29 @@
         + date.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' });
     }
 
+    function renderValueCell(field, entry) {
+      if (!entry.editHistory || !entry.editHistory.length) {
+        return `<td class="td-value">${entry[field] || '—'}</td>`;
+      }
+      const olds = entry.editHistory.map(h => `<span class="old-val">${h[field] || '—'}</span>`).join('');
+      return `<td class="td-value">${olds}<span class="new-val">${entry[field] || '—'}</span></td>`;
+    }
+
     function renderHistoryTable() {
       const tbody = document.getElementById('history-tbody');
-      if (!vitalsHistory.length) {
-        tbody.innerHTML = '<tr class="no-data"><td colspan="9">No vitals recorded yet.</td></tr>';
+      const patientName = currentSummaryPatient ? currentSummaryPatient.name : 'Unassigned';
+      const patientEntries = vitalsHistory.filter(e => e.patient === patientName);
+      if (!patientEntries.length) {
+        tbody.innerHTML = '<tr class="no-data"><td colspan="10">No vitals recorded yet.</td></tr>';
         return;
       }
       tbody.innerHTML = vitalsHistory.map((entry, i) => {
+        if (entry.patient !== patientName) return '';
+        if (entry.deleted) return '';
         const rowClass = i === 0 ? 'row-latest' : (i % 2 !== 0 ? 'row-alt' : '');
+        const rowTitle = entry.editedAt ? `title="Last edited: ${entry.editedAt}"` : '';
         return `
-          <tr class="${rowClass}">
+          <tr class="${rowClass}" ${rowTitle}>
             <td class="td-time">${entry.timestamp}</td>
             <td class="td-patient">${entry.patient}${entry.bed !== '—' ? '<br><span style="font-weight:400;color:#aaa;font-size:0.72rem">' + entry.bed + '</span>' : ''}</td>
             <td class="td-value">${entry.HR}</td>
@@ -3102,9 +3235,8 @@
           const onDelete = () => {
             closeModal('modal-delete-vital');
             cleanup();
-            vitalsHistory.splice(idx, 1);
+            vitalsHistory[idx].deleted = true;
             if (unassignedEntryIdx === idx) unassignedEntryIdx = -1;
-            else if (unassignedEntryIdx > idx) unassignedEntryIdx--;
             renderHistoryTable();
           };
           cancelBtn.addEventListener('click', onCancel);
@@ -3144,13 +3276,17 @@
               showInfo('Incomplete Fields', 'Please fill in all vital sign fields before saving.');
               return;
             }
-            vitalsHistory[idx].HR   = hr;
-            vitalsHistory[idx].SpO2 = spo2;
-            vitalsHistory[idx].PR   = pr;
-            vitalsHistory[idx].NIBP = nibp;
-            vitalsHistory[idx].MAP  = map;
-            vitalsHistory[idx].RR   = rr;
-            vitalsHistory[idx].Temp = temp;
+            const e = vitalsHistory[idx];
+            e.editHistory = e.editHistory || [];
+            e.editHistory.push({ HR: e.HR, SpO2: e.SpO2, PR: e.PR, NIBP: e.NIBP, MAP: e.MAP, RR: e.RR, Temp: e.Temp });
+            e.editedAt = formatTimestamp(new Date());
+            e.HR   = hr;
+            e.SpO2 = spo2;
+            e.PR   = pr;
+            e.NIBP = nibp;
+            e.MAP  = map;
+            e.RR   = rr;
+            e.Temp = temp;
             closeModal('modal-edit-vital');
             cleanup();
             renderHistoryTable();
@@ -3168,9 +3304,9 @@
       // ── Always push to vitalsHistory immediately ──────────────────
       if (vitals !== null) {
         const entry = {
-          timestamp: ts,
-          patient:   patient ? patient.name : 'Unassigned',
-          bed:       patient ? patient.bed  : '—',
+          timestamp:   ts,
+          patient:     patient ? patient.name : 'Unassigned',
+          bed:         patient ? patient.bed  : '—',
           HR:   vitals.HR,
           SpO2: vitals.SpO2,
           PR:   vitals.PR,
@@ -3178,6 +3314,8 @@
           MAP:  vitals.MAP,
           RR:   vitals.RR,
           Temp: vitals.Temp,
+          deleted:     false,
+          editHistory: [],
         };
         vitalsHistory.unshift(entry);
         unassignedEntryIdx = isPhotoFirst ? 0 : -1;
@@ -3222,6 +3360,7 @@
         assignPanel.style.display = 'none';
       }
 
+      currentSummaryPatient = patient;
       renderHistoryTable();
       showScreen('summary');
     }
@@ -3259,7 +3398,7 @@
     document.getElementById('btn-export-csv').addEventListener('click', () => {
       if (!vitalsHistory.length) { showInfo('No Data', 'No vitals have been recorded yet. Save at least one entry first.'); return; }
       const header = ['Date & Time', 'Patient', 'Bed', 'HR (bpm)', 'SpO2 (%)', 'NIBP (mmHg)', 'MAP (mmHg)', 'RR (brpm)', 'Temp (°C)'];
-      const rows   = vitalsHistory.map(e =>
+      const rows   = vitalsHistory.filter(e => !e.deleted).map(e =>
         [e.timestamp, e.patient, e.bed, e.HR, e.SpO2, e.NIBP, e.MAP, e.RR, e.Temp]
           .map(v => `"${String(v).replace(/"/g, '""')}"`)
           .join(',')
@@ -3322,10 +3461,12 @@
           document.getElementById('summary-patient-meta').textContent = `${p.bed}  ·  ${p.condition}`;
           // Show confirmation, hide controls
           const conf = document.getElementById('assign-confirmed');
-          conf.textContent = `✓ Assigned to ${p.name} — ${p.bed}`;
+          document.getElementById('assign-confirmed-text').textContent = `✓ Assigned to ${p.name} — ${p.bed}`;
           conf.style.display = '';
           document.getElementById('assign-controls').style.display = 'none';
           document.getElementById('btn-assign-patient').style.display = 'none';
+          lastAssignedIdx    = unassignedEntryIdx;
+          lastAssignedPatient = { name: 'Unassigned', bed: '—' };
           unassignedEntryIdx = -1;
           renderHistoryTable();
         });
@@ -3334,6 +3475,22 @@
 
     document.getElementById('assign-search').addEventListener('input', e => {
       renderAssignResults(e.target.value);
+    });
+
+    document.getElementById('btn-undo-assign').addEventListener('click', () => {
+      if (lastAssignedIdx < 0) return;
+      vitalsHistory[lastAssignedIdx].patient = lastAssignedPatient.name;
+      vitalsHistory[lastAssignedIdx].bed     = lastAssignedPatient.bed;
+      unassignedEntryIdx = lastAssignedIdx;
+      lastAssignedIdx    = -1;
+      lastAssignedPatient = null;
+      document.getElementById('summary-patient-name').textContent = 'Unassigned';
+      document.getElementById('summary-patient-meta').textContent = 'No patient assigned yet';
+      document.getElementById('assign-confirmed').style.display   = 'none';
+      document.getElementById('assign-controls').style.display    = '';
+      document.getElementById('assign-search').value = '';
+      renderAssignResults('');
+      renderHistoryTable();
     });
 
     // ── History screen (Screen 7) ──────────────────────────────────
@@ -3357,19 +3514,26 @@
       }
 
       tbody.innerHTML = filtered.map((entry, i) => {
-        const rowClass = i % 2 !== 0 ? 'row-alt' : '';
+        const isDeleted = !!entry.deleted;
+        const isEdited  = !isDeleted && entry.editHistory && entry.editHistory.length > 0;
+        const rowClass  = isDeleted ? 'row-deleted'
+                        : isEdited  ? 'row-edited'
+                        : i % 2 !== 0 ? 'row-alt' : '';
+        const badge = isDeleted ? '<span class="history-badge badge-deleted">deleted</span>'
+                    : isEdited  ? '<span class="history-badge badge-edited">edited</span>'
+                    : '';
+        const rowTitle = isEdited ? `title="Last edited: ${entry.editedAt}"` : '';
         return `
-          <tr class="${rowClass}">
-            <td class="td-time">${entry.timestamp}</td>
+          <tr class="${rowClass}" ${rowTitle}>
+            <td class="td-time">${entry.timestamp}${badge}</td>
             <td class="td-patient">${entry.patient}${entry.bed !== '—' ? '<br><span style="font-weight:400;color:#aaa;font-size:0.72rem">' + entry.bed + '</span>' : ''}</td>
-            <td class="td-value">${entry.HR}</td>
-            <td class="td-value">${entry.SpO2}</td>
-            <td class="td-value">${entry.PR   || '—'}</td>
-            <td class="td-value">${entry.NIBP}</td>
-            <td class="td-value">${entry.MAP}</td>
-            <td class="td-value">${entry.RR}</td>
-            <td class="td-value">${entry.Temp}</td>
-            <td>—</td>
+            ${renderValueCell('HR',   entry)}
+            ${renderValueCell('SpO2', entry)}
+            ${renderValueCell('PR',   entry)}
+            ${renderValueCell('NIBP', entry)}
+            ${renderValueCell('MAP',  entry)}
+            ${renderValueCell('RR',   entry)}
+            ${renderValueCell('Temp', entry)}
           </tr>`;
       }).join('');
     }
@@ -3384,7 +3548,7 @@
         return;
       }
       const header = ['Date & Time', 'Patient', 'Bed', 'HR (bpm)', 'SpO2 (%)', 'NIBP (mmHg)', 'MAP (mmHg)', 'RR (brpm)', 'Temp (°C)'];
-      const rows   = vitalsHistory.map(e =>
+      const rows   = vitalsHistory.filter(e => !e.deleted).map(e =>
         [e.timestamp, e.patient, e.bed, e.HR, e.SpO2, e.NIBP, e.MAP, e.RR, e.Temp]
           .map(v => `"${String(v).replace(/"/g, '""')}"`)
           .join(',')
