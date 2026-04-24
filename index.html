@@ -633,6 +633,61 @@
       font-size: 0.82rem;
       color: #444;
     }
+    .pc-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 0.1rem;
+    }
+    .pc-freq-wrap {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .pc-freq-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      background: #f3f0ec;
+      border: 1px solid rgba(201,146,42,0.25);
+      border-radius: 999px;
+      padding: 0.18rem 0.6rem;
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: #555;
+    }
+    .pc-freq-badge svg { flex-shrink: 0; }
+    .btn-freq-edit {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--muted);
+      padding: 2px 4px;
+      border-radius: 5px;
+      line-height: 1;
+      transition: color 0.15s, background 0.15s;
+    }
+    .btn-freq-edit:hover { color: var(--gold-d); background: rgba(201,146,42,0.1); }
+    .pc-freq-select {
+      font-size: 0.75rem;
+      font-family: inherit;
+      border: 1.5px solid var(--gold);
+      border-radius: 7px;
+      padding: 0.2rem 0.4rem;
+      background: #fff;
+      color: var(--maroon);
+      font-weight: 600;
+      cursor: pointer;
+      outline: none;
+    }
+    .pc-freq-select:focus { border-color: var(--maroon); }
+    .pc-last-captured {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.28rem;
+      font-size: 0.7rem;
+      color: var(--muted);
+    }
 
     /* Status badge */
     .status-badge {
@@ -1052,6 +1107,23 @@
       align-items: center;
       gap: 0.5rem;
     }
+    .verify-image-panel-header span { flex: 1; }
+    .btn-retake {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.72rem;
+      font-weight: 600;
+      background: none;
+      border: 1.5px solid var(--border);
+      border-radius: 6px;
+      padding: 3px 9px;
+      color: var(--muted);
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .btn-retake:hover { border-color: var(--maroon); color: var(--maroon); }
     .verify-image-panel-header span {
       font-size: 0.78rem;
       font-weight: 700;
@@ -2382,6 +2454,10 @@
         <div class="verify-image-panel-header">
           <div class="verify-image-panel-dot"></div>
           <span>Monitor Photo</span>
+          <button id="btn-retake-photo" class="btn-retake">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;"><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 .49-4.95"/></svg>
+            Retake
+          </button>
         </div>
         <!-- img shown when photo was uploaded; placeholder otherwise -->
         <img class="verify-monitor-img" id="verify-img" src="" alt="Monitor photo" style="display:none;" />
@@ -2393,6 +2469,9 @@
 
       <!-- RIGHT: editable vital signs form -->
       <div class="verify-form-panel">
+        <div id="verify-ocr-warning" style="display:none; background:#FEF9C3; border:1.5px solid #FDE047; border-radius:10px; padding:0.65rem 1rem; font-size:0.82rem; color:#854D0E; margin-bottom:0.75rem; display:none;">
+          ⚠ No values were automatically extracted. Please enter the vital signs manually before saving.
+        </div>
         <div class="verify-form-header">
           <h3>Extracted Vital Signs</h3>
           <p>Review and correct values before saving.</p>
@@ -2953,12 +3032,12 @@
     });
     // ── Patient data ───────────────────────────────────────────────
     let PATIENTS = [
-      { id: 1, name: 'Maria Santos',    bed: 'Bed 01', condition: 'Hypertensive Crisis',       status: 'critical' },
-      { id: 2, name: 'Jose Reyes',      bed: 'Bed 02', condition: 'Acute Respiratory Failure', status: 'critical' },
-      { id: 3, name: 'Ana Dela Cruz',   bed: 'Bed 03', condition: 'Post-Op Monitoring',        status: 'stable'   },
-      { id: 4, name: 'Ramon Villanueva',bed: 'Bed 04', condition: 'Septic Shock',              status: 'warning'  },
-      { id: 5, name: 'Luz Fernandez',   bed: 'Bed 05', condition: 'Diabetic Ketoacidosis',     status: 'warning'  },
-      { id: 6, name: 'Carlos Mendoza',  bed: 'Bed 06', condition: 'Stable Angina',             status: 'stable'   },
+      { id: 1, name: 'Maria Santos',    bed: 'Bed 01', condition: 'Hypertensive Crisis',       status: 'critical', frequency: 'q1h'   },
+      { id: 2, name: 'Jose Reyes',      bed: 'Bed 02', condition: 'Acute Respiratory Failure', status: 'critical', frequency: 'q15min'},
+      { id: 3, name: 'Ana Dela Cruz',   bed: 'Bed 03', condition: 'Post-Op Monitoring',        status: 'stable',   frequency: 'q1h'   },
+      { id: 4, name: 'Ramon Villanueva',bed: 'Bed 04', condition: 'Septic Shock',              status: 'warning',  frequency: 'q5min' },
+      { id: 5, name: 'Luz Fernandez',   bed: 'Bed 05', condition: 'Diabetic Ketoacidosis',     status: 'warning',  frequency: 'q15min'},
+      { id: 6, name: 'Carlos Mendoza',  bed: 'Bed 06', condition: 'Stable Angina',             status: 'stable',   frequency: 'q1h'   },
     ];
     let nextPatientId = 7;
 
@@ -2967,6 +3046,39 @@
 
     function statusLabel(s) {
       return s.charAt(0).toUpperCase() + s.slice(1);
+    }
+
+    const FREQ_LABELS = { q5min: 'Every 5 min', q15min: 'Every 15 min', q30min: 'Every 30 min', q1h: 'Every 1 hr', q2h: 'Every 2 hr' };
+    function freqLabel(f) { return FREQ_LABELS[f] || f; }
+
+    function lastCapturedLabel(patientName) {
+      const entry = vitalsHistory.find(e => !e.deleted && e.patient === patientName);
+      if (!entry) return null;
+      // timestamp: "April 23, 2026 10:45 AM" → extract time part (last 2 tokens)
+      const parts = entry.timestamp.split(' ');
+      return parts.slice(-2).join(' '); // "10:45 AM"
+    }
+
+    function toggleFreqEdit(e, pid) {
+      e.stopPropagation(); // don't open patient
+      const sel = document.getElementById('freq-sel-' + pid);
+      if (!sel) return;
+      const isHidden = sel.style.display === 'none';
+      sel.style.display = isHidden ? 'inline-block' : 'none';
+      if (isHidden) { sel.focus(); }
+    }
+
+    function saveFreq(e, pid) {
+      e.stopPropagation();
+      const p = PATIENTS.find(x => x.id === pid);
+      if (!p) return;
+      p.frequency = e.target.value;
+      renderPatientList(document.getElementById('pl-search')?.value || '');
+    }
+
+    function hideFreqSel(pid) {
+      const sel = document.getElementById('freq-sel-' + pid);
+      if (sel) sel.style.display = 'none';
     }
 
     function renderPatientList(filter = '') {
@@ -2998,6 +3110,28 @@
             <span class="status-badge ${p.status}">${statusLabel(p.status)}</span>
           </div>
           <div class="pc-condition">${p.condition}</div>
+          <div class="pc-footer">
+            <div class="pc-freq-wrap">
+              <span class="pc-freq-badge">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 15 15"/></svg>
+                ${freqLabel(p.frequency)}
+              </span>
+              <button class="btn-freq-edit" data-pid="${p.id}" title="Change monitoring frequency" onclick="toggleFreqEdit(event,${p.id})">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              </button>
+              <select class="pc-freq-select" id="freq-sel-${p.id}" style="display:none" onchange="saveFreq(event,${p.id})" onclick="event.stopPropagation()">
+                <option value="q5min"  ${p.frequency==='q5min'  ? 'selected':''}>Every 5 min</option>
+                <option value="q15min" ${p.frequency==='q15min' ? 'selected':''}>Every 15 min</option>
+                <option value="q30min" ${p.frequency==='q30min' ? 'selected':''}>Every 30 min</option>
+                <option value="q1h"    ${p.frequency==='q1h'    ? 'selected':''}>Every 1 hr</option>
+                <option value="q2h"    ${p.frequency==='q2h'    ? 'selected':''}>Every 2 hr</option>
+              </select>
+            </div>
+            ${(lc => lc ? `<span class="pc-last-captured">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>
+                Last captured: ${lc}
+              </span>` : '')(lastCapturedLabel(p.name))}
+          </div>
         </div>
       `).join('');
 
@@ -3227,9 +3361,8 @@
           console.error('Pipeline fetch failed:', err);
           showScreen('upload');
           showInfo(
-            'Pipeline Server Unreachable',
-            'Could not connect to pipeline_api.py on 192.168.1.4:5000. ' +
-            'Make sure the server is running: python pipeline_api.py'
+            'Processing Failed',
+            'The vital signs could not be extracted. Please check your connection and try again, or re-upload a clearer photo of the monitor.'
           );
         });
     }
@@ -3267,8 +3400,19 @@
         placeholder.style.display = 'flex';
       }
 
+      // Show warning if OCR returned no values
+      const allEmpty = !vitals || ['HR','SpO2','PR','NIBP','MAP','RR','Temp'].every(k => !vitals[k]);
+      const warn = document.getElementById('verify-ocr-warning');
+      warn.style.display = allEmpty ? '' : 'none';
+
       showScreen('verify');
     }
+
+    // Retake Photo — go back to upload and reset the box
+    document.getElementById('btn-retake-photo').addEventListener('click', () => {
+      resetUploadBox('box-monitor', 'input-monitor');
+      showScreen('upload');
+    });
 
     // Back to Upload
     document.getElementById('verify-back').addEventListener('click', () => {
